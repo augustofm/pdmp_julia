@@ -3,7 +3,8 @@ export
     LinearBound,
     nextevent_bps,
     nextevent_bps_q,
-    nextevent_zz
+    nextevent_zz,
+    nextevent_boomerang
 
 abstract type IPPSamplingMethod end
 abstract type Thinning <: IPPSamplingMethod end
@@ -50,6 +51,7 @@ NextEvent(tau; dobounce=(g,v)->true, flipindex=-1) =
 Return a bouncing time and corresponding intensity in the specific case of a
 Gaussian density (for which the simulation of the first arrival time of the
 corresponding IPP can be done exactly).
+Equation (7) BPS paper
 """
 function nextevent_bps(g::MvGaussian,
                        x::Vector{<:Real}, v::Vector{<:Real})
@@ -162,3 +164,40 @@ function nextevent_bps_q(gll::Function, x::Vector{<:Real}, v::Vector{<:Real},
     tau    = (length(tau)>0) ? minimum(tau) : Inf
     return NextEvent(tau)
 end
+
+"""
+    nextevent_boomerang(g::MvGaussian, x, v)
+
+Same as nextevent but for the Boomerang sampler.
+"""
+function nextevent_boomerang(g::MvGaussian,
+      x::Vector{<:Real}, v::Vector{<:Real})
+
+      #true value
+      #a=(-x*sin(t)+v*cos(t)).*(-gradll(v*sin(t)+x*cos(t)))
+      #lambda = Float64[]
+      #for j in 1:length(a)
+    #      append!(lambda, max(0,a[j]))
+     # end
+
+      #thinning
+      aux = sqrt.(x.*x+v.*v)
+
+      DeltaUtilda = P*(x-mu)-x
+
+      a1 = g.prec*(-g.mu)
+      a2 = g.prec*(aux-g.mu)-aux
+      B = max(abs.(a1),abs.(a2))
+      lambda = aux.*B
+      event_times = Random.randexp(length(x))./lambda
+      # Add an accept reject line for lambda(x,v,t)/lambda_bar
+      tau, index = findmin(event_times)
+      lambdabar = lambda[index]
+
+      c1=aux[index]*cos(tau-atan(-x[index]/v[index]))
+      c2=aux[index]*cos(tau-atan(v[index]/x[index]))
+      lambdatrue = max(0, c1*c2)
+      return NextEvent(tau, dobounce=(g,v)->(rand()<lambdatrue/lambdabar))
+
+      # Add the version without thinning
+ end

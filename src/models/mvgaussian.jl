@@ -107,7 +107,6 @@ Gradient of the loglikelihood of a multivariate Gaussian `g` at point `x`.
 gradloglik(g::MvGaussian, x::Vector{<:Real}) =
     mvg_precmu(g) - mvg_precmult(g, x)
 
-
 """
     loglik(g, x)
 

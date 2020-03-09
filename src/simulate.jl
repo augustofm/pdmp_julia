@@ -2,6 +2,7 @@ export
     Simulation,
     simulate
 
+
 """
     Simulation
 
@@ -41,7 +42,7 @@ struct Simulation
         @assert T > 0.0 "Simulation time must be positive"
         @assert lambdaref >= 0.0 "Refreshment rate must be >= 0"
         ALGNAME = uppercase(algname)
-        @assert (ALGNAME ∈ ["BPS", "ZZ","GBPS"]) "Unknown algorithm <$algname>"
+        @assert (ALGNAME ∈ ["BPS", "ZZ","GBPS","BOOMERANG"]) "Unknown algorithm <$algname>"
         new( x0, v0, T,
              nextevent, gradloglik, nextboundary,
              lambdaref, ALGNAME, length(x0),
@@ -115,7 +116,7 @@ function simulate(sim::Simulation)
 
     # compute current reference bounce time
     lambdaref = sim.lambdaref
-    tauref = (lambdaref>0.0) ? randexp() / lambdaref : Inf
+    tauref = (lambdaref>0.0) ? Random.randexp() / lambdaref : Inf
     # Compute time to next boundary + normal
     (taubd, normalbd) = sim.nextboundary(x, v)
 
@@ -130,48 +131,80 @@ function simulate(sim::Simulation)
         # increment the counter to keep track of the number of effective loops
         lcnt += 1
         # simulate first arrival from IPP
+    #    bounce = nevtakes2 ? sim.nextevent(x, v) : sim.nextevent(x, v, tauref)
         bounce = nevtakes2 ? sim.nextevent(x, v) : sim.nextevent(x, v, tauref)
-        # find next event (unconstrained case taubd=NaN (ignored))
+
+    # find next event (unconstrained case taubd=NaN (ignored))
         tau = min(bounce.tau, taubd, tauref)
         # standard bounce
         if tau == bounce.tau
             # there will be an evaluation of the gradient
             gradeval += 1
-            # updating position/time
+            # updating time
             t += tau
-            x += tau*v
-            # exploiting the memoryless property
-            tauref -= tau
-            # ---- BOUNCE ----
-            g = sim.gll(x)
-            if bounce.dobounce(g, v) # e.g.: thinning, acc/rej
-                # if accept
-                nbounce += 1
-                if sim.algname == "BPS"
-                    # if a mass matrix is provided
-                    if length(mass) > 0
-                        v = reflect_bps!(g, v, mass)
-                    # standard BPS bounce
-                    else
-                        v = reflect_bps!(g,v)
-                    end
-                elseif sim.algname == "GBPS"
-                    v = reflect_gbps(g, v)
-                elseif sim.algname == "ZZ"
-                    v = reflect_zz!(bounce.flipindex, v)
+
+            #if sim.algname == "BOOMERANG"
+            #    x, v = reflect_boomerang!(x, v,tau)
+            #else
+                # updating position
+                if sim.algname == "BOOMERANG"
+                    xbk = copy(x)
+                    x = sin(tau)*v+cos(tau)*x
+                    v = -sin(tau)*xbk+cos(tau)*v
+                else
+                    x += tau*v
                 end
-            else
-                # move closer to the boundary/refreshment time
-                taubd -= tau
-                # we don't need to record when rejecting
-                continue
-            end
+
+                # exploiting the memoryless property
+                tauref -= tau
+                # ---- BOUNCE ----
+                g = sim.gll(x)
+
+                if bounce.dobounce(g, v) # e.g.: thinning, acc/rej
+
+                    # if accept
+                    nbounce += 1
+
+                    # updating position
+                    if sim.algname =="BOOMERANG"
+                        v = -sin(tau)*xbk+cos(tau)*v
+                        v = reflect_boomerang!(g, v)
+                        #v = -sin(tau)*xbk+cos(tau)*v
+                    elseif sim.algname == "BPS"
+                        # if a mass matrix is provided
+                        if length(mass) > 0
+                            v = reflect_bps!(g, v, mass)
+                            # standard BPS bounce
+                        else
+                        v = reflect_bps!(g,v)
+                        end
+                    elseif sim.algname == "GBPS"
+                        v = reflect_gbps(g, v)
+                    elseif sim.algname == "ZZ"
+                        v = reflect_zz!(bounce.flipindex, v)
+            #    elseif sim.algname == "Boomerang"
+            #        x, v = reflect_boomerang!(x, v,tau)
+                    end
+                else
+                    # move closer to the boundary/refreshment time
+                    taubd -= tau
+                    # we don't need to record when rejecting
+                    continue
+                end
+            #end
         # hard bounce against boundary
         elseif tau == taubd
-            #
+            # CHANGE LATER!!!
             nboundary += 1
             # Record point epsilon from boundary for numerical stability
-            x += (tau - 1e-10) * v
+
+            if sim.algname == "BOOMERANG"
+                x = sin(tau - 1e-10)*v+cos(tau)*x
+            else
+                x +=  (tau - 1e-10) * v
+            end
+
+
             t += tau
             # exploiting the memoryless property
             tauref -= tau
@@ -184,7 +217,9 @@ function simulate(sim::Simulation)
                     v = reflect_bps!(normalbd,v)
                 end
             elseif sim.algname == "ZZ"
-                v = reflect_zz!(find((v.*normalbd).<0.0), v)
+                v = reflect_zz!(findall((v.*normalbd).<0.0), v)
+            else
+                v = reflect_boomerang!(normalbd, v)
             end
         # random refreshment
         else
@@ -196,12 +231,21 @@ function simulate(sim::Simulation)
                 #
                 nrefresh += 1
                 #
-                x += tau*v
-                t += tau
+                if sim.algname ∈ ["BPS", "GBPS","ZZ"]
+                    x += tau*v
+                else
+                    x = sin(tau)*v+cos(tau)*x
+                end
                 # ---- REFRESH ----
-                v = sim.refresh!(v)
+                if sim.algname=="ZZ"
+                    v  .= rand([-1,1], length(v))
+                    v  /= norm(v)
+                else
+                    v = sim.refresh!(v)
+                end
+                t += tau
                 # update tauref
-                tauref = randexp()/lambdaref
+                tauref = Random.randexp()/lambdaref
             end
         end
         # check when the next boundary hit will occur
