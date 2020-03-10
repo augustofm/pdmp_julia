@@ -69,13 +69,16 @@ end
 #    #v .-= 2.0dot(n, v) * (mass * n) / dot(mass * n, n)
 #    return x, v
 #end
-
 function reflect_boomerang!(n::Vector{<:Real}, v::Vector{<:Real})
-    v .-= 2.0dot(n, v) * n / dot(n, n)
+    v .-= 2.0dot(n, v) * (n) / dot(n, n)
     return v
 end
 
-
+function reflect_boomerang!(n::Vector{<:Real}, v::Vector{<:Real},
+    mass::Matrix{<:Real})
+    v .-= 2.0dot(n, v) * (mass * n) / dot(mass * n, n)
+    return v
+end
 
 
 

@@ -181,23 +181,28 @@ function nextevent_boomerang(g::MvGaussian,
      # end
 
       #thinning
-      aux = sqrt.(x.*x+v.*v)
+      #aux = sqrt.(x.*x+v.*v)
+      aux = sqrt(dot(x,x)+dot(v,v))
+      #DeltaUtilda = P*(x-mu)-x
 
-      DeltaUtilda = P*(x-mu)-x
-
-      a1 = g.prec*(-g.mu)
-      a2 = g.prec*(aux-g.mu)-aux
-      B = max(abs.(a1),abs.(a2))
-      lambda = aux.*B
-      event_times = Random.randexp(length(x))./lambda
+      #a1 = g.prec*(-g.mu)
+      #a2 = g.prec*(aux-g.mu)-aux
+      #B = max(abs.(a1),abs.(a2))
+      B = 1.7609*(aux+norm(g.mu))+aux
+      #lambda = aux.*B
+      lambdabar = aux*B
+      #event_times = Random.randexp(length(x))./lambda
+      tau = Random.randexp()/lambdabar
       # Add an accept reject line for lambda(x,v,t)/lambda_bar
-      tau, index = findmin(event_times)
-      lambdabar = lambda[index]
+      #tau, index = findmin(event_times)
 
-      c1=aux[index]*cos(tau-atan(-x[index]/v[index]))
-      c2=aux[index]*cos(tau-atan(v[index]/x[index]))
-      lambdatrue = max(0, c1*c2)
+      #lambdabar = lambda[index]
+
+      #c1=aux[index]*cos(tau-atan(-x[index]/v[index]))
+      #c2=aux[index]*cos(tau-atan(v[index]/x[index]))
+      arg = x*cos(tau)+v*sin(tau)
+      lambdatrue = max(0, dot(-x*sin(tau)+v*cos(tau), g.prec*(arg-g.mu)-arg))
+
       return NextEvent(tau, dobounce=(g,v)->(rand()<lambdatrue/lambdabar))
-
       # Add the version without thinning
  end

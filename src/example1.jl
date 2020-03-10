@@ -76,31 +76,29 @@ sim_zz = Simulation( x0, v0, T, nextev_zz, gradll,
 
 plot(path_zz.xs[1,:],path_zz.xs[2,:])
 pathmean(path_zz)
-
-
+details_zz
 # Building a Boomerang
 
 gradll(x) = gradloglik(mvg, x)+x
 nextev_boo(x, v) = nextevent_boomerang(mvg, x, v)
-T    = 1000.0   # length of path generated
-lref = 0.1    # rate of refreshment
+T    = 50000.0   # length of path generated
+lref = 0#0.1    # rate of refreshment
 #x0   = mu+L1.L*randn(p) # sensible starting point
-x0 = [10,　10]
+x0 = [-2,　-2]
 v0   = randn(p) # starting velocity
 #v0  /= norm(v0) # put it on the sphere (not necessary)
 algname = "BOOMERANG"
 # Define a simulation
 sim_boo = Simulation( x0, v0, T, nextev_boo, gradll,
-                  nextbd, lref, algname; maxgradeval = 10000)
+                  nextbd, lref, algname; maxgradeval = 500000)
 (path_boo, details_boo) = simulate(sim_boo)
 
-plot(path_boo.xs[1,:],path_boo.xs[2,:])
+plot(path_boo.xs[1,1:2],path_boo.xs[2,1:2])
 pathmean(path_boo)
 details_boo
 
 
 gradll(x) = gradloglik(mvg, x)
-
 
 # Building a basic MC estimator
 # (taking samples from 2D MVG that are in positive orthan)

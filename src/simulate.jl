@@ -143,55 +143,46 @@ function simulate(sim::Simulation)
             # updating time
             t += tau
 
-            #if sim.algname == "BOOMERANG"
-            #    x, v = reflect_boomerang!(x, v,tau)
-            #else
+            # updating position
+            if sim.algname == "BOOMERANG"
+                xbk = copy(x)
+                x = sin(tau)*v+cos(tau)*x
+                v = -sin(tau)*xbk+cos(tau)*v
+            else
+                x += tau*v
+            end
+            # exploiting the memoryless property
+            tauref -= tau
+            # ---- BOUNCE ----
+            g = sim.gll(x)
+
+            if bounce.dobounce(g, v) # e.g.: thinning, acc/rej
+                # if accept
+                nbounce += 1
                 # updating position
                 if sim.algname == "BOOMERANG"
-                    xbk = copy(x)
-                    x = sin(tau)*v+cos(tau)*x
-                    v = -sin(tau)*xbk+cos(tau)*v
-                else
-                    x += tau*v
-                end
-
-                # exploiting the memoryless property
-                tauref -= tau
-                # ---- BOUNCE ----
-                g = sim.gll(x)
-
-                if bounce.dobounce(g, v) # e.g.: thinning, acc/rej
-
-                    # if accept
-                    nbounce += 1
-
-                    # updating position
-                    if sim.algname =="BOOMERANG"
-                        v = -sin(tau)*xbk+cos(tau)*v
-                        v = reflect_boomerang!(g, v)
-                        #v = -sin(tau)*xbk+cos(tau)*v
-                    elseif sim.algname == "BPS"
-                        # if a mass matrix is provided
-                        if length(mass) > 0
-                            v = reflect_bps!(g, v, mass)
-                            # standard BPS bounce
-                        else
-                        v = reflect_bps!(g,v)
-                        end
-                    elseif sim.algname == "GBPS"
-                        v = reflect_gbps(g, v)
-                    elseif sim.algname == "ZZ"
-                        v = reflect_zz!(bounce.flipindex, v)
-            #    elseif sim.algname == "Boomerang"
-            #        x, v = reflect_boomerang!(x, v,tau)
+                    v = reflect_boomerang!(g, v)
+                elseif sim.algname == "BPS"
+                    # if a mass matrix is provided
+                    if length(mass) > 0
+                        v = reflect_bps!(g, v, mass)
+                        # standard BPS bounce
+                    else
+                    v = reflect_bps!(g,v)
                     end
-                else
-                    # move closer to the boundary/refreshment time
-                    taubd -= tau
-                    # we don't need to record when rejecting
+                elseif sim.algname == "GBPS"
+                    v = reflect_gbps(g, v)
+                elseif sim.algname == "ZZ"
+                    v = reflect_zz!(bounce.flipindex, v)
+                end
+            else
+                # move closer to the boundary/refreshment time
+                taubd -= tau
+                # we don't need to record when rejecting when trajectoris are linear
+                if sim.algname != "BOOMERANG"
                     continue
                 end
-            #end
+            end
         # hard bounce against boundary
         elseif tau == taubd
             # CHANGE LATER!!!
