@@ -161,7 +161,13 @@ function simulate(sim::Simulation)
                 nbounce += 1
                 # updating position
                 if sim.algname == "BOOMERANG"
-                    v = reflect_boomerang!(g, v)
+                    # if a mass matrix is provided
+                    if length(mass) > 0
+                        v = reflect_boomerang!(g, v, mass)
+                        # standard Boomerang bounce
+                    else
+                        v = reflect_boomerang!(g, v)
+                    end
                 elseif sim.algname == "BPS"
                     # if a mass matrix is provided
                     if length(mass) > 0
@@ -210,7 +216,12 @@ function simulate(sim::Simulation)
             elseif sim.algname == "ZZ"
                 v = reflect_zz!(findall((v.*normalbd).<0.0), v)
             else
-                v = reflect_boomerang!(normalbd, v)
+                # Specular reflection (possibly with mass matrix)
+                if length(mass) > 0
+                    v = reflect_boomerang!(normalbd, v, mass)
+                else
+                    v = reflect_boomerang!(normalbd, v)
+                end
             end
         # random refreshment
         else

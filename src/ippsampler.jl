@@ -170,39 +170,44 @@ end
 
 Same as nextevent but for the Boomerang sampler.
 """
-function nextevent_boomerang(g::MvGaussian,
+function nextevent_boomerang(gll::Function, g::MvGaussian,
       x::Vector{<:Real}, v::Vector{<:Real})
 
-      #true value
-      #a=(-x*sin(t)+v*cos(t)).*(-gradll(v*sin(t)+x*cos(t)))
-      #lambda = Float64[]
-      #for j in 1:length(a)
-    #      append!(lambda, max(0,a[j]))
-     # end
 
       #thinning
-      #aux = sqrt.(x.*x+v.*v)
       aux = sqrt(dot(x,x)+dot(v,v))
-      #DeltaUtilda = P*(x-mu)-x
 
-      #a1 = g.prec*(-g.mu)
-      #a2 = g.prec*(aux-g.mu)-aux
-      #B = max(abs.(a1),abs.(a2))
       B = 1.7609*(aux+norm(g.mu))+aux
+
       #lambda = aux.*B
       lambdabar = aux*B
       #event_times = Random.randexp(length(x))./lambda
       tau = Random.randexp()/lambdabar
+
       # Add an accept reject line for lambda(x,v,t)/lambda_bar
-      #tau, index = findmin(event_times)
-
-      #lambdabar = lambda[index]
-
-      #c1=aux[index]*cos(tau-atan(-x[index]/v[index]))
-      #c2=aux[index]*cos(tau-atan(v[index]/x[index]))
       arg = x*cos(tau)+v*sin(tau)
-      lambdatrue = max(0, dot(-x*sin(tau)+v*cos(tau), g.prec*(arg-g.mu)-arg))
 
+      lambdatrue = max(0, dot(-x*sin(tau)+v*cos(tau), -gll(arg)))
+
+      #lambdatrue = max(0, dot(-x*sin(tau)+v*cos(tau), g.prec*(arg-g.mu)-arg))
       return NextEvent(tau, dobounce=(g,v)->(rand()<lambdatrue/lambdabar))
       # Add the version without thinning
+ end
+
+ """
+     nextevent_boomerang(lb::LinearBound, x, v)
+
+ Return a bouncing time and corresponding intensity corresponding to a linear
+ upperbound described in `lb`.
+ """
+
+ # CORRECT FUNCTION BELOW
+ function nextevent_boomerang(lb::LinearBound,
+                        x::Vector{<:Real}, v::Vector{<:Real})
+     a = lb.a(x, v)
+     b = lb.b
+     @assert a >= 0.0 && b > 0.0 "<ippsampler/nextevent_boomerang/linearbound>"
+     tau = -a / b + sqrt((a / b)^2 + 2randexp() / b)
+     lambdabar = a + b * tau
+     return NextEvent(tau, dobounce=(g,v)->(rand()<-dot(g, v)/lambdabar))
  end
