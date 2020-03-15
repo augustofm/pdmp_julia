@@ -30,7 +30,7 @@ mu = zeros(p)#+[3.,3.]
 #mu  = P1*P1bk*(zeros(p)+[3.,3.])
 mvg = MvGaussianCanon(mu, P1)
 
-a = sqrt(P1)
+#a = sqrt(P1)
 
 
 # Building a BPS Simulation
@@ -92,11 +92,12 @@ details_zz
 
 # Building a Boomerang Simulation with bounces and refreshment
 
+#massmatrix = [[1 0];[0 1]]
 massmatrix = P1
 gradll(x) = gradloglik(mvg, x)+massmatrix*x#inv(massmatrix)*x
 nextev_boo(x, v) = nextevent_boomerang(gradll, mvg, x, v)
 T    = 1000.0   # length of path generated
-lref = 0.5#0.15#0.1    # rate of refreshment
+lref = 0.5#0.5#0.15#0.1    # rate of refreshment
 #x0   = mu+L1.L*randn(p) # sensible starting point
 x0 = [0,0]
 v0   = randn(p) # starting velocity
@@ -109,12 +110,13 @@ sim_boo = Simulation(x0, v0, T, nextev_boo, gradll,
 (path_boo, details_boo) = simulate(sim_boo)
 
 plot(path_boo.xs[1,:],path_boo.xs[2,:])
-
-annotate!(2, -2, text(string("nsegments: ", details_boo["nsegments"],"\n",
+    annotate!(2, -2, text(string("nsegments: ", details_boo["nsegments"],"\n",
     "nbounce: ", details_boo["nbounce"],"\n",
     "nrefresh: ", details_boo["nrefresh"]), :red, :right, 10))
-    annotate!(2, -3, text(string("path mean: ", round.(pathmean(path_boo),digits=3)), :black, :right,7))
-    annotate!(2, -3.5, text(string("correlation: ", round.(cor(path_boo.xs[1,:],path_boo.xs[2,:]),digits=3)), :black, :right,7))
+        annotate!(-1.7, 2.3, text(string("path mean: ", round.(pathmean(path_boo),digits=3)), :black, :right,7))
+        annotate!(-1.7, 2, text(string("correlation_total: ", round.(cor(path_boo.xs[1,:],path_boo.xs[2,:]),digits=3)), :black, :right,7))
+        annotate!(-1.7, 1.7, text(string("correlation_corners: ", round.(cor(path_boo.xs[1,findall(path_boo.is_jump)],path_boo.xs[2,findall(path_boo.is_jump)]),digits=3)), :black, :right,7))
+
 
 pathmean(path_boo)
 details_boo
@@ -138,12 +140,12 @@ sim_boo2 = Simulation(x0, v0, T, nextev_boo, gradll,
 (path_boo2, details_boo2) = simulate(sim_boo2)
 
 plot(path_boo2.xs[1,:],path_boo2.xs[2,:])
-
-annotate!(2, -2, text(string("nsegments: ", details_boo2["nsegments"],"\n",
-    "nbounce: ", details_boo2["nbounce"],"\n",
-    "nrefresh: ", details_boo2["nrefresh"]), :red, :right, 10))
-    annotate!(2, -3, text(string("path mean: ", round.(pathmean(path_boo2),digits=3)), :black, :right,7))
-    annotate!(2, -3.5, text(string("correlation: ", round.(cor(path_boo2.xs[1,:],path_boo2.xs[2,:]),digits=3)), :black, :right,7))
+    annotate!(2, -2, text(string("nsegments: ", details_boo2["nsegments"],"\n",
+        "nbounce: ", details_boo2["nbounce"],"\n",
+        "nrefresh: ", details_boo2["nrefresh"]), :red, :right, 10))
+        annotate!(-1.7, 2.3, text(string("path mean: ", round.(pathmean(path_boo2),digits=3)), :black, :right,7))
+        annotate!(-1.7, 2, text(string("correlation_total: ", round.(cor(path_boo2.xs[1,:],path_boo2.xs[2,:]),digits=3)), :black, :right,7))
+        annotate!(-1.7, 1.7, text(string("correlation_corners: ", round.(cor(path_boo2.xs[1,findall(path_boo2.is_jump)],path_boo2.xs[2,findall(path_boo2.is_jump)]),digits=3)), :black, :right,7))
 
 
 

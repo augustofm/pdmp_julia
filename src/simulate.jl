@@ -105,7 +105,7 @@ function simulate(sim::Simulation)
     blocksize = sim.blocksize
 
     # storing xs as a single column for efficient resizing
-    xs, ts = zeros(d*blocksize), zeros(blocksize)
+    xs, ts, is_jump = zeros(d*blocksize), zeros(blocksize), falses(blocksize)
     # store initial point
     xs[1:d] = x
     # mass matrix?
@@ -130,6 +130,11 @@ function simulate(sim::Simulation)
     while (t < sim.T) && (gradeval < sim.maxgradeval)
         # increment the counter to keep track of the number of effective loops
         lcnt += 1
+
+        # Default for trajectories. False only when there's no bounce and the point registered is in the
+        # halmitonian trajectory
+
+        jumping_event = true
         # simulate first arrival from IPP
     #    bounce = nevtakes2 ? sim.nextevent(x, v) : sim.nextevent(x, v, tauref)
         bounce = nevtakes2 ? sim.nextevent(x, v) : sim.nextevent(x, v, tauref)
@@ -182,6 +187,7 @@ function simulate(sim::Simulation)
                     v = reflect_zz!(bounce.flipindex, v)
                 end
             else
+                jumping_event = false
                 # move closer to the boundary/refreshment time
                 taubd -= tau
                 # we don't need to record when rejecting when trajectoris are linear
@@ -259,12 +265,15 @@ function simulate(sim::Simulation)
         if mod(i,blocksize)==0
             resize!(xs, length(xs) + d * blocksize)
             resize!(ts, length(ts) + blocksize)
+            resize!(is_jump, length(is_jump) + blocksize)
         end
 
         # Storing path times
         ts[i] = t
          # storing columns vertically, a vector is simpler/cheaper to resize
         xs[((i-1) * d + 1):(i * d)] = x
+        # storing if it's a corner or just part of the hamiltonian path
+        is_jump[i] = jumping_event
 
         # Safety checks to break long loops every 100 iterations
         if mod(lcnt, 100) == 0
@@ -289,5 +298,5 @@ function simulate(sim::Simulation)
         "nrefresh"  => nrefresh
     )
 
-    (Path(reshape(xs[1:(i*d)], (d,i)), ts[1:i]), details)
+    (Path(reshape(xs[1:(i*d)], (d,i)), ts[1:i], is_jump[1:i]), details)
 end
