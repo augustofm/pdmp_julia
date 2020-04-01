@@ -1,8 +1,11 @@
 export
     Path,
     samplepath,
+    samplepath_boo,
     quadpathpoly,
     pathmean,
+    pathmean_boo,
+    pathvar_boo,
     esspath
 
 """
@@ -16,12 +19,13 @@ const AllowedTimeType = Union{Vector{<:Real}, AbstractRange{<:Real}}
 """
     Path
 
-Type to store a path simulated via PDSampling. It stores the corners and the
+Type to store a path simulated via PDSampling. It stores the corners or trajectory and the
 times.
 """
 mutable struct Path
-    xs::Matrix{Real}  # corners (dim: nfeatures * nsteps)
+    xs::Matrix{Real}  # corners/trajectories (dim: nfeatures * nsteps)
     ts::Vector{Real}  # times (dim: nsteps)
+    #is_jump::BitArray # if corner or halmitonian trajectory
     # -- implicit
     p::Int      # nfeatures
     nseg::Int   # number of segments
@@ -49,6 +53,28 @@ struct Segment
 end
 
 """
+    Segment Boomerang
+
+Type to store the information relative to a single segment within a path in the
+Boomerang simulation.
+"""
+struct SegmentBoo
+    ta::Real
+    tb::Real
+    xa::Vector{Real}
+    xb::Vector{Real}
+    # -- implicit
+    tau::Real
+    va::Vector{Real}
+    function SegmentBoo(ta, tb, xa, xb)
+        @assert tb > ta "times of subsequent events should be distinct"
+        new(ta, tb, xa, xb, (tb - ta) ,(xb-cos(tb-ta)*xa) / sin(tb - ta))
+    end
+end
+
+
+
+"""
     getsegment(p, j)
 
 Retrieves segment j where j=1 corresponds to the first segment from the initial
@@ -56,6 +82,16 @@ time to the first corner.
 """
 getsegment(p::Path, j::Int) =
     Segment(p.ts[j], p.ts[j+1], p.xs[:,j], p.xs[:,j+1])
+
+"""
+    getsegment_boo(p, j)
+
+Retrieves segment j where j=1 corresponds to the first segment from the initial
+time to the first corner and the initial velocity
+"""
+getsegment_boo(p::Path, j::Int) =
+    SegmentBoo(p.ts[j], p.ts[j+1], p.xs[:,j], p.xs[:,j+1])
+
 
 """
     samplepath(p, t)
@@ -87,6 +123,54 @@ function samplepath(p::Path, t::AllowedTimeType)
     samples
 end
 samplepath(p::Path, t::Real) = samplepath(p, [t])[:, 1]
+
+"""
+    samplepath_boo(p, t)
+
+Sample the piecewise hamiltonian trajectory defined by the corners `xs` and the
+times `ts` at given time `t`. The matrix returned has dimensions `p*length(t)`.
+"""
+function samplepath_boo(p::Path, t::AllowedTimeType)
+    # Check if the allowed time is within the simulation time frame
+    @assert t[1] >= p.ts[1] && t[end] <= p.ts[end]
+    samples = zeros(p.p, length(t))
+    #
+    ti = t[1]
+    j = searchsortedlast(p.ts, ti)
+# STOPPED HERE
+    seg = getsegment_boo(p, j)
+    i = 1
+    while i <= length(t)
+        ti = t[i]
+        if ti <= seg.tb
+            samples[:,i] = cos(ti-seg.ta)*seg.xa + sin(ti - seg.ta) * seg.va
+            # increment
+            i += 1
+        else
+            j += searchsortedlast(p.ts[j+1:end], ti)
+            # safeguard for out of bound: point to last segment
+            j = (j+1 >= length(p.ts)) ? length(p.ts) - 1 : j
+            seg = getsegment_boo(p,j)
+        end
+    end
+#    i = 1
+#    while i <= length(t)
+#        ti = t[i]
+#        if ti <= seg[2]
+#            samples[:,i] = cos(ti-seg[1])*seg[3] + sin(ti - seg[1]) * seg[5]
+#            # increment
+#            i += 1
+#        else
+#            j += searchsortedlast(p.ts[j+1:end], ti)
+#            # safeguard for out of bound: point to last segment
+#            j = (j+1 >= length(p.ts)) ? length(p.ts) - 1 : j
+#            seg = SegmentBoo(p.ts[j], p.ts[j+1], p.xs[:,j], p.xs[:,j+1])
+#        end
+#    end
+    samples
+end
+samplepath_boo(p::Path, t::Real) = samplepath(p, [t])[:, 1]
+
 
 """
     quadpathpoly(path, poly)
@@ -124,7 +208,74 @@ function quadpathpoly(path::Path, pol::Poly)
     end
     res/T
 end
+
+function quadpathboo_1cm(path::Path)
+    dim = length(path.xs[:,1])
+    res = zeros(dim)
+    nseg = length(path.ts)-1
+    T = path.ts[end]
+    for segidx = 1:nseg-1
+        # for each segment in the path
+        segment = getsegment_boo(path, segidx)
+        # get the characteristics
+        tau = segment.tau
+        xa = segment.xa
+        va = segment.va
+        # integrate along that segment
+        for d = 1:dim
+#            res[d] += polyint(polyval(pol, Poly([xa[d], v[d]])))(tau)
+            res[d] += sin(tau)*xa[d]-cos(tau)*va[d]#+va[d]
+        end
+    end
+    # last segment
+    lastsegment = getsegment_boo(path, nseg)
+    # characteristics
+    tau = T - lastsegment.ta
+    xa = lastsegment.xa
+    va = lastsegment.va
+    # integrate along that segment
+    for d = 1:dim
+        #res[d] += polyint(polyval(pol, Poly([xa[d], v[d]])))(tau)
+        res[d] += sin(tau)*xa[d]-cos(tau)*va[d]#+va[d]
+    end
+    res/T
+end
+function quadpathboo_2cm(path::Path)
+    dim = length(path.xs[:,1])
+    res = zeros(dim)
+    nseg = length(path.ts)-1
+    T = path.ts[end]
+    for segidx = 1:nseg-1
+        # for each segment in the path
+        segment = getsegment_boo(path, segidx)
+        # get the characteristics
+        tau = segment.tau
+        xa = segment.xa
+        va = segment.va
+        # integrate along that segment
+        for d = 1:dim
+#            res[d] += polyint(polyval(pol, Poly([xa[d], v[d]])))(tau)
+            res[d] += (0.5+0.25*sin(2*tau))*xa[d]^2+(0.5-0.25*sin(2*tau))*va[d]^2
+        end
+    end
+    # last segment
+    lastsegment = getsegment_boo(path, nseg)
+    # characteristics
+    tau = T - lastsegment.ta
+    xa = lastsegment.xa
+    va = lastsegment.va
+    # integrate along that segment
+    for d = 1:dim
+        #res[d] += polyint(polyval(pol, Poly([xa[d], v[d]])))(tau)
+        res[d] += (0.5+0.25*sin(2*tau))*xa[d]^2+(0.5-0.25*sin(2*tau))*va[d]^2
+    end
+    res/T
+end
+
 pathmean(path::Path) = quadpathpoly(path, Poly([0.0, 1.0]))
+pathmean_boo(path::Path) = quadpathboo_1cm(path)
+pathvar_boo(path::Path) = quadpathboo_2cm(path)
+
 
 """
     esspath(path, ns, rtol, limitfrac)

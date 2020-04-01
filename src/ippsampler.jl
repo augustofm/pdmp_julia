@@ -4,7 +4,8 @@ export
     nextevent_bps,
     nextevent_bps_q,
     nextevent_zz,
-    nextevent_boomerang
+    nextevent_boomerang,
+    nextevent_mhwithinpdmp
 
 abstract type IPPSamplingMethod end
 abstract type Thinning <: IPPSamplingMethod end
@@ -24,6 +25,7 @@ struct LinearBound <: Thinning
             (x, v) -> max(dot(-gllstar, v), 0.) + norm(x-xstar) * b)
     end
 end
+
 
 """
     NextEvent
@@ -166,17 +168,15 @@ function nextevent_bps_q(gll::Function, x::Vector{<:Real}, v::Vector{<:Real},
 end
 
 """
-    nextevent_boomerang(g::MvGaussian, x, v)
+    nextevent_boomerang(gll::grad of loglikelihood, x, v)
 
 Same as nextevent but for the Boomerang sampler.
 """
 function nextevent_boomerang(gll::Function, g::MvGaussian,
       x::Vector{<:Real}, v::Vector{<:Real})
 
-
       #thinning
       aux = sqrt(dot(x,x)+dot(v,v))
-
       B = 1.7609*(aux+norm(g.mu))+aux
 
       #lambda = aux.*B
@@ -195,11 +195,33 @@ function nextevent_boomerang(gll::Function, g::MvGaussian,
  end
 
  """
-     nextevent_boomerang(lb::LinearBound, x, v)
+     nextevent_mhwithinpdmp(gll::grad of log likelihood, MvGaussian, x, v)
 
- Return a bouncing time and corresponding intensity corresponding to a linear
- upperbound described in `lb`.
+Same as nextevent but for the Metropolis Hastings within Boomerang.
  """
+
+function nextevent_mhwithinpdmp(gll::Function, g::MvGaussian,
+        x::Vector{<:Real}, v::Vector{<:Real})
+
+        #thinning
+        aux = sqrt(dot(x,x)+dot(v,v))
+        B = 1.7609*(aux+norm(g.mu))+aux
+
+        #lambda = aux.*B
+        lambdabar = aux*B
+        #event_times = Random.randexp(length(x))./lambda
+        tau = Random.randexp()/lambdabar
+
+        # Add an accept reject line for lambda(x,v,t)/lambda_bar
+        arg = x*cos(tau)+v*sin(tau)
+
+        lambdatrue = max(0, dot(-x*sin(tau)+v*cos(tau), -gll(arg)))
+
+        #lambdatrue = max(0, dot(-x*sin(tau)+v*cos(tau), g.prec*(arg-g.mu)-arg))
+        return NextEvent(tau, dobounce=(g,v)->(rand()<lambdatrue/lambdabar))
+        # Add the version without thinning
+end
+
 
  # CORRECT FUNCTION BELOW
  function nextevent_boomerang(lb::LinearBound,
