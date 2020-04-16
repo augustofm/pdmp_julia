@@ -1,7 +1,8 @@
 export
     reflect_bps!,
     reflect_zz!,
-    reflect_boomerang!,
+    reflect_boo!,
+#    refresh_boomerang!,
     refresh_global!,
     refresh_restricted!,
     refresh_partial!,
@@ -62,25 +63,25 @@ end
 # ----------------------------------------------------------------------------
 # Boomerang KERNELS
 
-#function reflect_boomerang!(x::Vector{<:Real}, v::Vector{<:Real}, tau_boo::Float64)
-#    r = sin(tau_boo)^2
-#    x +=sqrt(r)*v+sqrt(1-r)*x
-#    v +=-sqrt(r)*x+sqrt(1-r)*v
-#    #v .-= 2.0dot(n, v) * (mass * n) / dot(mass * n, n)
-#    return x, v
-#end
-function reflect_boomerang!(n::Vector{<:Real}, v::Vector{<:Real})
-    v .-= 2.0dot(n, v) * (n) / dot(n, n)
+function reflect_boo!(n::Vector{<:Real}, v::Vector{<:Real})
+    v .-= 2.0dot(n, v) * n / dot(n, n)
     return v
 end
 
-function reflect_boomerang!(n::Vector{<:Real}, v::Vector{<:Real},
+function reflect_boo!(n::Vector{<:Real}, v::Vector{<:Real},
     mass::Matrix{<:Real})
     v .-= 2.0dot(n, v) * (mass * n) / dot(mass * n, n)
     return v
 end
 
+# NOT WORKING YET
+reflect_boo_factor!(mask::Vector{Int}, v::Vector{<:Real}) = (v[mask] .*= -1.0; v)
+reflect_boo_factor!(mask::Int, v::Vector{<:Real}) = reflect_boo_factor!!([mask], v)
 
+reflect_boo_factor!(mask::Vector{Int}, v::Vector{<:Real},
+    mass::Matrix{<:Real}) = (v[mask] .*= -1.0; v)
+reflect_boo_factor!(mask::Int, v::Vector{<:Real},
+    mass::Matrix{<:Real}) = reflect_boo_factor!!([mask], v)
 
 # ----------------------------------------------------------------------------
 # ZZ KERNELS
@@ -98,6 +99,12 @@ reflect_zz!(mask::Int, v::Vector{<:Real}) = reflect_zz!([mask], v)
 # Refreshment kernels
 
 refresh_global!(v::Vector{<:Real}) = (v .= randn(length(v)); v)
+
+#function refresh_boomerang!(v::Vector{<:Real},
+#    mass::Matrix{<:Real})
+#    vnew = Distributions.rand(Distributions.MvNormal(zeros(length(v)),mass), 1)[:,1]
+#    return vnew
+#end
 
 function refresh_restricted!(v::Vector{<:Real})
     v  = refresh_global!(v)

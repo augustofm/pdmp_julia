@@ -32,6 +32,18 @@ mutable struct Path
     Path(xs, ts) = new(xs, ts, size(xs, 1), length(ts) - 1)
 end
 
+mutable struct Path_MH
+    xs::Matrix{Real}  # corners/trajectories (dim: nfeatures * nsteps)
+    ys::Matrix{Real}  # corners/trajectories (dim: nfeatures * nsteps)
+    ts::Vector{Real}  # times (dim: nsteps)
+    #is_jump::BitArray # if corner or halmitonian trajectory
+    # -- implicit
+    d1::Int      # nfeatures Boomerang
+    d2::Int     # nfeatures Metropolis-Hastings
+    nseg::Int   # number of segments
+    Path_MH(xs, ys, ts) = new(xs, ys, ts, size(xs, 1), size(ys, 1), length(ts) - 1)
+end
+
 """
     Segment
 

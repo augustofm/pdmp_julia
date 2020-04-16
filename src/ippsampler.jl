@@ -4,8 +4,11 @@ export
     nextevent_bps,
     nextevent_bps_q,
     nextevent_zz,
-    nextevent_boomerang,
-    nextevent_mhwithinpdmp
+    nextevent_boo,
+    nextevent_boo_gpc_cte,
+    nextevent_boo_gpc_affine,
+    nextevent_boo_gpc_factor_cte,
+    nextevent_boo_gpc_factor_affine
 
 abstract type IPPSamplingMethod end
 abstract type Thinning <: IPPSamplingMethod end
@@ -168,11 +171,11 @@ function nextevent_bps_q(gll::Function, x::Vector{<:Real}, v::Vector{<:Real},
 end
 
 """
-    nextevent_boomerang(gll::grad of loglikelihood, x, v)
+    nextevent_boo(gll::grad of loglikelihood, x, v)
 
 Same as nextevent but for the Boomerang sampler.
 """
-function nextevent_boomerang(gll::Function, g::MvGaussian,
+function nextevent_boo(gll::Function, g::MvGaussian,
       x::Vector{<:Real}, v::Vector{<:Real})
 
       #thinning
@@ -195,33 +198,62 @@ function nextevent_boomerang(gll::Function, g::MvGaussian,
  end
 
  """
-     nextevent_mhwithinpdmp(gll::grad of log likelihood, MvGaussian, x, v)
+     nextevent_boo_gpc(gll::grad of log likelihood, MvGaussian, x, v)
 
 Same as nextevent but for the Metropolis Hastings within Boomerang.
  """
 
-function nextevent_mhwithinpdmp(gll::Function, g::MvGaussian,
-        x::Vector{<:Real}, v::Vector{<:Real})
+function nextevent_boo_gpc_cte(gll::Function, x::Vector{<:Real},v::Vector{<:Real})
 
-        #thinning
-        aux = sqrt(dot(x,x)+dot(v,v))
-        B = 1.7609*(aux+norm(g.mu))+aux
+        aux = sqrt.(x.^2+v.^2)
+        lambdabar=dot((exp.(-aux).+1).^(-1),aux)
 
-        #lambda = aux.*B
-        lambdabar = aux*B
-        #event_times = Random.randexp(length(x))./lambda
+        #lambdabar1 =
+        #lambdabar2 =
+        #m = sqrt(p)/2
+        #M = sqrt(p)/4
+        #b = 0.5*M*(dot(x,x)+dot(v,v))+m*sqrt(dot(x,x)+dot(v,v))
+
         tau = Random.randexp()/lambdabar
 
-        # Add an accept reject line for lambda(x,v,t)/lambda_bar
-        arg = x*cos(tau)+v*sin(tau)
-
-        lambdatrue = max(0, dot(-x*sin(tau)+v*cos(tau), -gll(arg)))
-
-        #lambdatrue = max(0, dot(-x*sin(tau)+v*cos(tau), g.prec*(arg-g.mu)-arg))
-        return NextEvent(tau, dobounce=(g,v)->(rand()<lambdatrue/lambdabar))
-        # Add the version without thinning
+        return NextEvent(tau, dobounce=(g,v)->(rand()<dot(-g, v)/lambdabar))
 end
 
+function nextevent_boo_gpc_affine(gll::Function, x::Vector{<:Real},v::Vector{<:Real})
+
+        p = length(x)
+        m = 1/2#sqrt(p)/2
+        M = 1/4#sqrt(p)/4
+        a = max(dot(v,-gll(x)) ,0.)
+        b = M*(dot(x,x)+dot(v,v))+m*sqrt(dot(x,x)+dot(v,v))
+        tau = (-a+sqrt(a^2+2*b*Random.randexp()))/b
+        lambdabar = a+b*tau
+
+        return NextEvent(tau, dobounce=(g,v)->(rand()<dot(-g, v)/lambdabar))
+end
+
+function nextevent_boo_gpc_factor_cte(gll::Function, x::Vector{<:Real},v::Vector{<:Real})
+
+        aux = sqrt.(x.^2+v.^2)
+        c_i = (exp.(-aux).+1).^(-1)
+        lambdabar=c_i.*aux
+        taus = Random.randexp(length(x))./lambdabar
+        tau, flipindex = findmin(taus)
+        return NextEvent(tau, dobounce=(g,v)->(rand()<(-g.*v)[flipindex]/lambdabar[flipindex]), flipindex=flipindex)
+end
+
+function nextevent_boo_gpc_factor_affine(gll::Function, x::Vector{<:Real},v::Vector{<:Real})
+
+        m_i= abs.(gll(repeat([0];outer=[length(x)])))
+        M_i = repeat([1/4];outer=[length(x)])
+        a_i = max.(-gll(x).*v ,0.)
+        b_i = (M_i*(dot(x,x)+dot(v,v))+m_i).*sqrt.(x.^2+v.^2)
+        taus = (-a_i.+sqrt.(a_i.^2+2*b_i.*Random.randexp(length(x))))./b_i
+        tau, flipindex = findmin(taus)
+        lambdabar = a_i[flipindex]+b_i[flipindex]*tau
+
+        return NextEvent(tau, dobounce=(g,v)->(rand()<(-g.*v)[flipindex]/lambdabar[flipindex]), flipindex=flipindex)
+end
 
  # CORRECT FUNCTION BELOW
  function nextevent_boomerang(lb::LinearBound,

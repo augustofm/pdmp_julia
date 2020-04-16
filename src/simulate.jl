@@ -1,7 +1,7 @@
 export
     Simulation,
     simulate
-
+using Distributions
 
 """
     Simulation
@@ -17,37 +17,50 @@ struct Simulation
     gll::Function          # Gradient of Log Lik (potentially CV)
     nextboundary::Function # Where/When is the next boundary hit
     lambdaref::Real        # Refreshment rate
-    algname::String        # BPS, ZZ, GBPS
+    algname::String        # BPS, ZZ, GBPS, BOOMERANG
     # derived
-    dim::Int               # dimensionality
+    dim::Int             # dimensionality
     # optional named arguments
-    mass::Matrix{Real}     # mass matrix (preconditioner)
+    MHsampler::Bool        # Wheter to run MH within PDMP or not
+    y0::Vector{Real}
+    ytarget::Function      # Target function for MH acceptance/rejection
+    Sigmay::Function       # In case mass function depends on Y and has to be updated
+    epsilon::Real          # For Metropolis Hastings
+    nmh::Int               # Number of iterations for each MH step
+    lambdamh::Real         # MH update rate
+    mass::Matrix{Float64}     # mass matrix (preconditioner)
     blocksize::Int         # increment the storage by blocks
     maxsimtime::Real       # max. simulation time (s)
     maxsegments::Int       # max. num. of segments
     maxgradeval::Int       # max. num. grad. evals
     refresh!::Function     # refreshment function (TODO: examples)
+    # optional derived
+    dim_y::Int
 
     # constructor
     function Simulation(x0, v0, T, nextevent, gradloglik, nextboundary,
                 lambdaref=1.0, algname="BPS";
+                MHsampler=false, y0=ones(0), ytarget=logistic,Sigmay=identity, epsilon=0.1, nmh=20,lambdamh=1.0,
                 mass=diagm(0=>ones(0)), blocksize=1000, maxsimtime=4e3,
                 maxsegments=1_000_000, maxgradeval=100_000_000,
                 refresh! = refresh_global! )
         # check none of the default named arguments went through
         @assert !(x0 == :undefined || v0 == :undefined || T == :undefined ||
                   nextevent == :undefined || gradloglik == :undefined || nextboundary == :undefined) "Essential arguments undefined"
+#        @assert !(algname=="BOOMERANG-MH" & y0 == :undefined) "Essential MH arguments undefined"
         # basic check to see that things are reasonable
         @assert length(x0) == length(v0) > 0 "Inconsistent arguments"
         @assert T > 0.0 "Simulation time must be positive"
         @assert lambdaref >= 0.0 "Refreshment rate must be >= 0"
+        #@assert lambdamh >= 0.0 "MH rate must be >= 0"
         ALGNAME = uppercase(algname)
         @assert (ALGNAME ∈ ["BPS", "ZZ","GBPS","BOOMERANG"]) "Unknown algorithm <$algname>"
         new( x0, v0, T,
-             nextevent, gradloglik, nextboundary,
+             nextevent,  gradloglik, nextboundary,
              lambdaref, ALGNAME, length(x0),
+             MHsampler, y0, ytarget, Sigmay, epsilon, nmh, lambdamh,
              mass, blocksize, maxsimtime,
-             maxsegments, maxgradeval, refresh! )
+             maxsegments, maxgradeval, refresh!, length(y0) )
     end
 end
 # Constructor with named arguments
@@ -60,6 +73,13 @@ function Simulation(;
             nextboundary = :undefined,
             lambdaref = 1.0,
             algname = "BPS",
+            MHsampler = false,
+            y0 = ones(0),
+            ytarget = logistic,
+            Sigmay = identity,
+            epsilon = 0.01,
+            nmh = 20,
+            lambdamh = 1.0,
             mass = diagm(0=>ones(0)),
             blocksize = 1000,
             maxsimtime = 4e3,
@@ -73,6 +93,9 @@ function Simulation(;
                 nextboundary,
                 lambdaref,
                 algname;
+                MHsampler=MHsampler, y0=y0, ytarget=ytarget,
+                Sigmay = Sigmay,
+                epsilon=epsilon,nmh=nmh,lambdamh=lambdamh,
                 mass = mass,
                 blocksize = blocksize,
                 maxsimtime = maxsimtime,
@@ -94,6 +117,9 @@ function simulate(sim::Simulation)
     d = sim.dim
     # initial states
     x, v = copy(sim.x0), copy(sim.v0)
+
+
+
     # time counter, and segment counter
     t, i = 0.0, 1
     # counters for the number of effective loops and
@@ -105,18 +131,38 @@ function simulate(sim::Simulation)
     blocksize = sim.blocksize
 
     # storing xs as a single column for efficient resizing
-    xs, ts, is_jump = zeros(d*blocksize), zeros(blocksize), falses(blocksize)
+    xs, ts = zeros(d*blocksize), zeros(blocksize)
     # store initial point
     xs[1:d] = x
-    # mass matrix?
+
     mass = copy(sim.mass) # store it here as we may want to adapt it
 
     # check if nextevent takes 2 or 3 parameters
-    nevtakes2 = (length(methods(sim.nextevent).ms[1].sig.parameters)-1) == 2
+
+    if sim.MHsampler
+        d2 = sim.dim_y
+        y=copy(sim.y0)
+        ys = zeros(d2*blocksize)
+        ys[1:d2] = y
+        nevtakes2 = (length(methods(sim.nextevent).ms[1].sig.parameters)-1) == 2 #change to 3 later
+        # MH counters
+        #accrej_counter = 0
+        #accepted = false
+        naccepted = 0
+        nrejected = 0
+    else
+        nevtakes2 = (length(methods(sim.nextevent).ms[1].sig.parameters)-1) == 2
+    end
+
+
+    # compute current reference metropolis hasting time
+    lambdamh = sim.lambdamh
+    taumh = (lambdamh>0.0) ? Random.randexp() / lambdamh : Inf
 
     # compute current reference bounce time
     lambdaref = sim.lambdaref
     tauref = (lambdaref>0.0) ? Random.randexp() / lambdaref : Inf
+
     # Compute time to next boundary + normal
     (taubd, normalbd) = sim.nextboundary(x, v)
 
@@ -127,6 +173,7 @@ function simulate(sim::Simulation)
     # keep track of how many standard bounces
     nbounce = 0
 
+
     while (t < sim.T) && (gradeval < sim.maxgradeval)
         # increment the counter to keep track of the number of effective loops
         lcnt += 1
@@ -134,13 +181,19 @@ function simulate(sim::Simulation)
         # Default for trajectories. False only when there's no bounce and the point registered is in the
         # halmitonian trajectory
 
-        jumping_event = true
+        #jumping_event = true
         # simulate first arrival from IPP
     #    bounce = nevtakes2 ? sim.nextevent(x, v) : sim.nextevent(x, v, tauref)
-        bounce = nevtakes2 ? sim.nextevent(x, v) : sim.nextevent(x, v, tauref)
+        if sim.MHsampler
+            bounce = nevtakes2 ? sim.nextevent(x, v) : sim.nextevent(x, v, tauref) #add y later
+            tau = min(bounce.tau, taubd, tauref, taumh)
+        else
+            bounce = nevtakes2 ? sim.nextevent(x, v) : sim.nextevent(x, v, tauref) # remove y later
+            tau = min(bounce.tau, taubd, tauref)
+        end
 
     # find next event (unconstrained case taubd=NaN (ignored))
-        tau = min(bounce.tau, taubd, tauref)
+        #tau = min(bounce.tau, taubd, tauref, taumh)
         # standard bounce
         if tau == bounce.tau
             # there will be an evaluation of the gradient
@@ -159,7 +212,13 @@ function simulate(sim::Simulation)
             # exploiting the memoryless property
             tauref -= tau
             # ---- BOUNCE ----
-            g = sim.gll(x)
+            if sim.MHsampler
+                # exploiting the memoryless property
+                taumh -= tau
+                g = sim.gll(x,y)
+            else
+                g = sim.gll(x)
+            end
 
             if bounce.dobounce(g, v) # e.g.: thinning, acc/rej
                 # if accept
@@ -168,10 +227,10 @@ function simulate(sim::Simulation)
                 if sim.algname == "BOOMERANG"
                     # if a mass matrix is provided
                     if length(mass) > 0
-                        v = reflect_boomerang!(g, v, mass)
+                        v = reflect_boo!(g, v, mass)
                         # standard Boomerang bounce
                     else
-                        v = reflect_boomerang!(g, v)
+                        v = reflect_boo!(g, v)
                     end
                 elseif sim.algname == "BPS"
                     # if a mass matrix is provided
@@ -187,13 +246,13 @@ function simulate(sim::Simulation)
                     v = reflect_zz!(bounce.flipindex, v)
                 end
             else
-                jumping_event = false
+                #jumping_event = false
                 # move closer to the boundary/refreshment time
                 taubd -= tau
                 # we don't need to record when rejecting when trajectoris are linear
-                if sim.algname != "BOOMERANG"
+                #if sim.algname != "BOOMERANG"
                     continue
-                end
+                #end
             end
         # hard bounce against boundary
         elseif tau == taubd
@@ -211,6 +270,10 @@ function simulate(sim::Simulation)
             t += tau
             # exploiting the memoryless property
             tauref -= tau
+            if sim.MHsampler
+                taumh -= tau
+            end
+
             # ---- BOUNCE (boundary) ----
             if sim.algname ∈ ["BPS", "GBPS"]
                 # Specular reflection (possibly with mass matrix)
@@ -224,12 +287,38 @@ function simulate(sim::Simulation)
             else
                 # Specular reflection (possibly with mass matrix)
                 if length(mass) > 0
-                    v = reflect_boomerang!(normalbd, v, mass)
+                    v = reflect_boo_factor!(normalbd, v, mass)
                 else
-                    v = reflect_boomerang!(normalbd, v)
+                    v = reflect_boo_factor!(normalbd, v)
                 end
             end
-        # random refreshment
+
+        # metropolis hastings
+        elseif tau == taumh
+            t += tau
+#            accrej_counter += 1
+
+            for iter in 1:sim.nmh
+                #x_atjump = sin(tau)*v+cos(tau)*x
+                xbk = copy(x)
+                x = sin(tau)*v+cos(tau)*x
+                v = -sin(tau)*xbk+cos(tau)*v
+                ydash = y+randn(d2) * sim.epsilon
+                if rand() < min(1.0, (sim.ytarget(x,ydash) ./ sim.ytarget(x,y))[1])
+                    y = copy(ydash)
+                    naccepted += 1
+                else
+                    nrejected += 1
+                end
+                iter += 1
+            end
+            mass = sim.Sigmay(y) #add y later
+            # update taumh
+            taumh = Random.randexp()/lambdamh
+            # exploiting the memoryless property
+            tauref -= tau
+            #    v = sim.refresh!(v)
+            # random refreshment
         else
             #= to be in this part, lambdaref should be greater than 0.0
             because if lambdaref=0 then tauref=Inf. There may be a weird
@@ -248,6 +337,12 @@ function simulate(sim::Simulation)
                 if sim.algname=="ZZ"
                     v  .= rand([-1,1], length(v))
                     v  /= norm(v)
+    #temp
+                elseif sim.algname=="BOOMERANG"
+                    #v = refresh_boo!(v,mass)
+                    initial = Distributions.MvNormal(zeros(d),mass)
+                    #initial = Distributions.MvNormal(zeros(d),Matrix{Float64}(I, d, d))
+                    v = Distributions.rand(initial,1)[:,1]
                 else
                     v = sim.refresh!(v)
                 end
@@ -264,16 +359,22 @@ function simulate(sim::Simulation)
         # Increase storage on a per-need basis.
         if mod(i,blocksize)==0
             resize!(xs, length(xs) + d * blocksize)
+            if sim.MHsampler
+                resize!(ys, length(ys) + d2 * blocksize)
+            end
             resize!(ts, length(ts) + blocksize)
-            resize!(is_jump, length(is_jump) + blocksize)
+            #resize!(is_jump, length(is_jump) + blocksize)
         end
 
         # Storing path times
         ts[i] = t
          # storing columns vertically, a vector is simpler/cheaper to resize
         xs[((i-1) * d + 1):(i * d)] = x
+        if sim.MHsampler
+            ys[((i-1) * d2 + 1):(i * d2)] = y
+        end
         # storing if it's a corner or just part of the hamiltonian path
-        is_jump[i] = jumping_event
+        #is_jump[i] = jumping_event
 
         # Safety checks to break long loops every 100 iterations
         if mod(lcnt, 100) == 0
@@ -288,15 +389,32 @@ function simulate(sim::Simulation)
         end
     end # End of while loop
 
-    details = Dict(
-        "clocktime" => time()-start,
-        "ngradeval" => gradeval,
-        "nloops"    => lcnt,
-        "nsegments" => i,
-        "nbounce"   => nbounce,
-        "nboundary" => nboundary,
-        "nrefresh"  => nrefresh
-    )
+    if sim.MHsampler
+        details = Dict(
+            "clocktime" => time()-start,
+            "ngradeval" => gradeval,
+            "nloops"    => lcnt,
+            "nsegments" => i,
+            "nbounce"   => nbounce,
+            "nboundary" => nboundary,
+            "nrefresh"  => nrefresh,
+            "MHevaluations" => naccepted+nrejected,
+            "MHaccrejratio" => round(naccepted/(naccepted+nrejected),digits=1)
+        )
+        (Path_MH(reshape(xs[1:(i*d)], (d,i)), reshape(ys[1:(i*d2)], (d2,i)), ts[1:i]), details)
+    else
+        details = Dict(
+            "clocktime" => time()-start,
+            "ngradeval" => gradeval,
+            "nloops"    => lcnt,
+            "nsegments" => i,
+            "nbounce"   => nbounce,
+            "nboundary" => nboundary,
+            "nrefresh"  => nrefresh,
+        )
+        (Path(reshape(xs[1:(i*d)], (d,i)), ts[1:i]), details)
+    end
+#    (Path(reshape(xs[1:(i*d)], (d,i)), ts[1:i], is_jump[1:i]), details)
+#    (Path_MH(reshape(xs[1:(i*d)], (d,i)), reshape(ys[1:(i*d2)], (d2,i)), ts[1:i]), details)
 
-    (Path(reshape(xs[1:(i*d)], (d,i)), ts[1:i], is_jump[1:i]), details)
 end
