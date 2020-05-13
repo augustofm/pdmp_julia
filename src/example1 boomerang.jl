@@ -6,8 +6,8 @@ using Plots                 #For plotting
 using DelimitedFiles
 using Distributions         #For mvg, Poisson...
 #using LatexStrings          #For legends and labels
-using PGFPlotsX
-Plots.PGFPlotsBackend()
+#using PGFPlotsX
+#Plots.PGFPlotsBackend()
 
 p=2
 #normal to faces and intercepts
@@ -32,7 +32,9 @@ L1  = cholesky(C1)
 # figure out how to add 1 to the array
 mu = zeros(p)#+[3.,3.]
 #mu  = P1*P1bk*(zeros(p)+[3.,3.])
-mvg = MvGaussianCanon(mu, P1)
+#mvg = MvGaussianCanon(mu, P1)
+mvg = MvGaussianStandard(mu,C1)
+massmatrix = Matrix{Float64}(I, p, p)
 
 #a = sqrt(P1)
 
@@ -42,35 +44,36 @@ mvg = MvGaussianCanon(mu, P1)
 gradll(x) = gradloglik(mvg, x) # = - P1*(x-mu) = - nablaU
 nextev_bps(x, v) = nextevent_bps(mvg, x, v)
 
-T    = 500.0   # length of path generated
-lref = 0.1     # rate of refreshment
+T    = 900.0   # length of path generated
+lref = 0.05     # rate of refreshment
 #x0   = mu+L1.L*randn(p) # sensible starting point
 x0 = [0.1,0.1]#,0.1,0.1,0.1]
-v0   = randn(p) # starting velocity
+v0 = [0.1,0.1]#,0.1,0.1,0.1]
+#v0   = randn(p) # starting velocity
 v0  /= norm(v0) # put it on the sphere (not necessary)
 # Define a simulation
+algname = "BPS"
 sim_bps = Simulation( x0, v0, T, nextev_bps, gradll,
-                  nextbd, lref; maxgradeval = 10000)
+                  nextbd, lref,  mass=massmatrix; maxsegments = 139)
 (path_bps, details_bps) = simulate(sim_bps)
 
 plot(path_bps.xs[1,:],path_bps.xs[2,:],
     legend=false,
     size=(600,600),
-    title="Bouncy Particle Sampler (2-dimensional Gaussian target)",
-    xlabel = "X_1(t)",
-    ylabel = "X_2(t)",
-    ylims = (-3.5,4),
+    #title="Bouncy Particle Sampler (2-dimensional Gaussian target)",
+    xlabel = "X1(t)",
+    ylabel = "X2(t)",
+    ylims = (-4,4),
+    xlims = (-4,4),
     color=:black)
     scatter!(path_bps.xs[1,:],path_bps.xs[2,:],legend=false)
-    annotate!(2, 3.5, text(string("nsegments: ", details_bps["nsegments"],"\n",
+    annotate!(4, -3, text(string("nsegments: ", details_bps["nsegments"],"\n",
     "nbounce: ", details_bps["nbounce"],"\n",
     "nrefresh: ", details_bps["nrefresh"]), :black, :right, 10))
-    annotate!(2, 4, text(string("path mean: ", round.(pathmean(path_bps),digits=3)), :black, :right,10))
-#savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure_bps")
+    #annotate!(3, 4, text(string("path mean: ", round.(pathmean(path_bps),digits=3)), :black, :right,10))
+savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure2_bps")
 #cor(path_bps.xs[2,:], path_bps.xs[1,:])
 details_bps
-
-
 
 
 # Building a Zig Zag Simulation
@@ -78,33 +81,34 @@ details_bps
 gradll(x) = gradloglik(mvg, x)
 nextev_zz(x, v) = nextevent_zz(mvg, x, v)
 
-T    = 500.0   # length of path generated
-lref = 0.1#1.0     # rate of refreshment
+T    = 900.0   # length of path generated
+lref = 0.05#1.0     # rate of refreshment
 #x0   = mu+L1.L*randn(p) # sensible starting point
-x0 = [0.1,0.1]#,0.1,0.1,0.1]
-v0   = rand([-1,1], p) # starting velocity
-v0  /= norm(v0) # put it on the sphere (not necessary)
+#x0 = [0.1,0.1]#,0.1,0.1,0.1]
+#v0   = rand([-1,1], p) # starting velocity
+#v0  /= norm(v0) # put it on the sphere (not necessary)
 algname = "ZZ"
 # Define a simulation
 sim_zz = Simulation( x0, v0, T, nextev_zz, gradll,
-                  nextbd, lref, algname; maxgradeval = 10000)
+                  nextbd, lref, algname; maxgradeval = 500000, maxsegments=139)
 (path_zz, details_zz) = simulate(sim_zz)
 
 plot(path_zz.xs[1,:],path_zz.xs[2,:],
     legend=false,
     size=(600,600),
-    title="Zig-Zag Sampler (2-dimensional Gaussian target)",
-    xlabel = "X_1(t)",
-    ylabel = "X_2(t)",
-    ylims = (-3.5,4),
+    #title="Zig-Zag Sampler (2-dimensional Gaussian target)",
+    xlabel = "X1(t)",
+    ylabel = "X2(t)",
+    ylims = (-4,4),
+    xlims = (-4,4),
     color=:black)
     scatter!(path_zz.xs[1,:],path_zz.xs[2,:],legend=false)
-    annotate!(2, 3.5, text(string("nsegments: ", details_zz["nsegments"],"\n",
+    annotate!(4, -3, text(string("nsegments: ", details_zz["nsegments"],"\n",
     "nbounce: ", details_zz["nbounce"],"\n",
     "nrefresh: ", details_zz["nrefresh"]), :black, :right, 10))
-    annotate!(2, 4, text(string("path mean: ", round.(pathmean(path_zz),digits=3)), :black, :right,10))
+    #annotate!(3, 4, text(string("path mean: ", round.(pathmean(path_zz),digits=3)), :black, :right,10))
 #cor(path_bps.xs[2,:], path_bps.xs[1,:])
-#savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure_zz")
+savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure2_zz")
 #pathmean(path_zz)
 details_zz
 
@@ -112,19 +116,21 @@ details_zz
 # Building a Boomerang Simulation with bounces and refreshment
 
 massmatrix = Matrix{Float64}(I, p, p)
-gradll(x) = gradloglik(mvg, x)+massmatrix*x#inv(massmatrix)*x
-nextev_boo(x, v) = nextevent_boomerang(gradll, mvg, x, v)
-T    = 15000  # length of path generated
-lref = 0.1#0.5#0.15#0.1    # rate of refreshment
+#massmatrix = C1
+#gradll(x) = gradloglik(mvg, x)-massmatrix*x#inv(massmatrix)*x
+gradll(x) = gradloglik(mvg,x)+x#(inv(massmatrix))*x
+nextev_boo(x, v) = nextevent_boo(gradll, mvg, x, v)
+T    = 90000  # length of path generated
+lref = 0.04#0.5#0.15#0.1    # rate of refreshment
 #x0   = mu+L1.L*randn(p) # sensible starting point
-x0 = [0.1,0.1]
-v0   = randn(p) # starting velocity
+x0 = [2.,2.]
+v0   = rand(MvNormal(zeros(p),massmatrix),1)[:,1] # starting velocity
 #v0  /= norm(v0) # put it on the sphere (not necessary)
 algname = "BOOMERANG"
 
 # Define a simulation
 sim_boo = Simulation(x0, v0, T, nextev_boo, gradll,
-                  nextbd, lref, algname,mass=massmatrix; maxgradeval = 45000)
+                  nextbd, lref, algname,mass=massmatrix; maxgradeval = 1000000, maxsegments=129)
 (path_boo, details_boo) = simulate(sim_boo)
 
 samples = samplepath_boo(path_boo,[0.0:0.1:round(path_boo.ts[end]-1,digits=0);])
@@ -132,36 +138,38 @@ samples = samplepath_boo(path_boo,[0.0:0.1:round(path_boo.ts[end]-1,digits=0);])
 plot(samples[1,:],samples[2,:],
     legend=false,
     size=(600,600),
-    title="Boomerang Sampler (2-dimensional Gaussian target)",
-    xlabel = "X_1(t)",
-    ylabel = "X_2(t)",
-    ylims = (-3.5,4),
+    #title="Boomerang Sampler (2-dimensional Gaussian target)",
+    xlabel = "X1(t)",
+    ylabel = "X2(t)",
+    ylims = (-4,4),
+    xlims = (-4,4),
     #fmt = :png,
     color=:black)
     scatter!(path_boo.xs[1,:],path_boo.xs[2,:],legend=false)
-    annotate!(2, 3.5, text(string("nsegments: ", details_boo["nsegments"],"\n",
+    annotate!(4, -3, text(string("nsegments: ", details_boo["nsegments"],"\n",
     "nbounce: ", details_boo["nbounce"],"\n",
     "nrefresh: ", details_boo["nrefresh"]), :black, :right, 10))
-    annotate!(2, 4, text(string("path mean: ", round.(pathmean_boo(path_boo),digits=3)), :black, :right,10))
-#savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure_boo")
+    #annotate!(2, 4, text(string("path mean: ", round.(pathmean_boo(path_boo),digits=3)), :black, :right,10))
+savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure2_boo")
 
 
 # Building a Boomerang Simulation with NO bounces, but with  refreshment
-massmatrix = P1
+massmatrix = Matrix{Float64}(I, p, p)
 #massmatrix = Matrix{Float64}(I, p, p)
-gradll(x) = gradloglik(mvg, x)+massmatrix*x
-nextev_boo(x, v) = nextevent_boomerang(gradll, mvg, x, v)
+gradll(x) = gradloglik(mvg, x)+inv(massmatrix)*x
+#gradll(x0)
+nextev_boo(x, v) = nextevent_boo(gradll, mvg, x, v)
 T    = 15000.0   # length of path generated
 lref = 0.5#0.15#0.1    # rate of refreshment
 #x0   = mu+L1.L*randn(p) # sensible starting point
-x0 = [0,0]
+x0 = [0, 0]
 v0   = randn(p) # starting velocity
 #v0  /= norm(v0) # put it on the sphere (not necessary)
 algname = "BOOMERANG"
 
 # Define a simulation
 sim_boo2 = Simulation(x0, v0, T, nextev_boo, gradll,
-                  nextbd, lref, algname; maxgradeval = 45000)
+                  nextbd, lref, algname,mass=massmatrix; maxgradeval = 45000)
 (path_boo2, details_boo2) = simulate(sim_boo2)
 
 samples2 = samplepath_boo(path_boo2,[0.0:0.1:round(path_boo2.ts[end]-1,digits=0);])

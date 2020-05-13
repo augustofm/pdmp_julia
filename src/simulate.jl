@@ -287,9 +287,9 @@ function simulate(sim::Simulation)
             else
                 # Specular reflection (possibly with mass matrix)
                 if length(mass) > 0
-                    v = reflect_boo_factor!(normalbd, v, mass)
+                    v = reflect_boo!(normalbd, v, mass)
                 else
-                    v = reflect_boo_factor!(normalbd, v)
+                    v = reflect_boo!(normalbd, v)
                 end
             end
 

@@ -175,12 +175,12 @@ end
 
 Same as nextevent but for the Boomerang sampler.
 """
-function nextevent_boo(gll::Function, g::MvGaussian,
+function nextevent_boo(gll::Function,
       x::Vector{<:Real}, v::Vector{<:Real})
 
       #thinning
       aux = sqrt(dot(x,x)+dot(v,v))
-      B = 1.7609*(aux+norm(g.mu))+aux
+      B = aux+1.5*(aux)#+norm(g.mu))+
 
       #lambda = aux.*B
       lambdabar = aux*B
@@ -222,8 +222,8 @@ end
 function nextevent_boo_gpc_affine(gll::Function, x::Vector{<:Real},v::Vector{<:Real})
 
         p = length(x)
-        m = 1/2#sqrt(p)/2
-        M = 1/4#sqrt(p)/4
+        m = sqrt(p)/2 #1/2#
+        M = sqrt(p)/4 #1/4#
         a = max(dot(v,-gll(x)) ,0.)
         b = M*(dot(x,x)+dot(v,v))+m*sqrt(dot(x,x)+dot(v,v))
         tau = (-a+sqrt(a^2+2*b*Random.randexp()))/b
