@@ -58,33 +58,55 @@ end
 ## MH within Boomerang CTE BOUND
 
 
-theta0 = [7., 2.5]
-massmatrix = Kernelmatrix(theta0)
 
 lref = 0.01
 
-prior = MvNormal(zeros(p),massmatrix)
 algname = "BOOMERANG"
 T    = 1000000  # length of path generated
 
 MH = true
 
-lmh　= 0.01
-epsilon=0.2
-nmh=20
+lmh　= 0.05
+epsilon=0.25
+nmh=25
+
+#u2 = TruncatedNormal(maximum(x)-minimum(x),1,0,Inf)
+
+#u1 = Normal(0,5)
+u1 = Gamma(5,2)
+u2 = InverseGamma(2.5,10)
+
+#u1 = Uniform(0.1, 20)#Gamma(5,1)#Uniform(0.1, 15)# (maximum(x)-minimum(x))/2)Gamma(2.5,2.5)##Gamma(2.5,2.5)
+#u2 = Uniform(0.1, 20)#Gamma(5,1)#Uniform(0.01, 0.5*abs(maximum(x)-minimum(x)))#Gamma(3,2)#Uniform(0.1, 0.5*abs(maximum(x)-minimum(x)))#(maximum(x)-minimum(x))/2) Gamma(2.5,2.5)##Gamma(2.5,2.5)#
+
+histogram(Any[rand(u1,1000), rand(u1,1000)], line=(1,0.2,:black), normed=true,fillcolor=[:blue :black], fillalpha=0.4)
+histogram(Any[rand(u2,1000), rand(u2,1000)], line=(1,0.2,:black), normed=true,fillcolor=[:blue :black], fillalpha=0.4)
 
 
-u1 = Uniform(0.1, 10)# (maximum(x)-minimum(x))/2)Gamma(2.5,2.5)##Gamma(2.5,2.5)
-u2 = Uniform(0.1, 10)#(maximum(x)-minimum(x))/2) Gamma(2.5,2.5)##Gamma(2.5,2.5)#
+
+using DataFrame
+prior_y = DataFrame(sigma=rand(u1,5000),
+                 lengthscale=rand(u2,5000))
+@df prior_y marginalhist(:sigma, :lengthscale,bins=25, fg_color=:black)
+@df prior_y histogram(:sigma, legend = :topleft, bins=20,
+                    title= L"Signal Variance $\sigma_f^2")
+@df prior_y histogram(:lengthscale, legend = :topleft, bins=50,
+                                        title= "Length scale")
+
+
 ytarget(x,y) = pdf(MvNormal(zeros(p),Kernelmatrix(y)),x)*pdf(u1,y[1])*pdf(u2,y[2])#pdf(MvNormal([7.,3.],Matrix{Float64}(I, 2, 2)), y)
 #nextev_mhwithinpdmp(f, theta, v) = nextevent_boo_gpc_affine(gradll, f, theta, v)
 
-theta0 = [7., 2.]
+#theta0 = [7., 2.5]
+theta0 = [7., 2.5]
+#theta0 = [rand(u1,1)[1], rand(u2,1)[1]]
+massmatrix = Kernelmatrix(theta0)
+prior = MvNormal(zeros(p),massmatrix)
+#rand(u1,1)[:,1]
 
-
-ess_vector_boo = Vector{Float64}()
-ess_vector_raw_boo = Vector{Float64}()
-mh_acc_vector_boo = Vector{Float64}()
+ess_vector_boo1 = Vector{Float64}()
+ess_vector_raw_boo1 = Vector{Float64}()
+mh_acc_vector_boo1 = Vector{Float64}()
 
 #for i in 1:20
 f0 = Distributions.rand(prior,1)[:,1]
@@ -96,17 +118,19 @@ nextev_mhwithinpdmp(f, theta, v) = nextevent_boo_gpc_cte(gradll,f, theta, v)
 sim_mhwithinpdmp1 = Simulation(f0, v0, T, nextev_mhwithinpdmp, gradll,
                   nextbd, lref, algname, MHsampler=true, y0=theta0, ytarget=ytarget,
                   Sigmay = Kernelmatrix, epsilon=epsilon, nmh=nmh,lambdamh=lmh;
-                  mass=massmatrix, maxsegments=10000)
+                  mass=massmatrix, maxsegments=50000)
 (path_mhwithinpdmp1, details_mhwithinpdmp1) = simulate(sim_mhwithinpdmp1)
-#plot(path_mhwithinpdmp3.ys[1,:],path_mhwithinpdmp3.ys[2,:])
+plot(path_mhwithinpdmp1.ys[1,:],path_mhwithinpdmp1.ys[2,:],
+    xlabel = "signal variance",
+    ylabel = "length-scale")
 boo_part1=Path(path_mhwithinpdmp1.xs, path_mhwithinpdmp1.ts)
 ess1=esspath_boo(boo_part1)#samples3)
-ess_sec1=mean(ess1[1])/details_mhwithinpdmp1["clocktime"]
-#print(ess_sec)
-#print("\n")
-#    push!(ess_vector_raw_boo, ess_sec)
-#    push!(ess_vector_boo,ess_sec/details_mhwithinpdmp3["clocktime"])
-#    push!(mh_acc_vector_boo,details_mhwithinpdmp3["MHaccrejratio"])
+ess_sec1=mean(ess1[1])
+#print(ess_sec1)
+print("\n")
+    push!(ess_vector_raw_boo1, ess_sec1)
+    push!(ess_vector_boo1,ess_sec1/details_mhwithinpdmp1["clocktime"])
+    push!(mh_acc_vector_boo1,details_mhwithinpdmp1["MHaccrejratio"])
 #end
 
 Tp = 0.999 * path_mhwithinpdmp1.ts[end]
@@ -128,27 +152,48 @@ plot(samples1[2,:],samples1[30,:],
     color=:black)
     scatter!(boo_part1.xs[2,:],boo_part1.xs[30,:],legend=false)
 
-#esspath_boo(boo_part3)
+using StatsPlots: @df, StatsPlots, marginalhist
+using DataFrames
+
+nrow = Integer(length(path_mhwithinpdmp1.ysfull)/2)
+df_sigma = DataFrame(Prior = rand(u1,nrow),
+                 Posterior=path_mhwithinpdmp1.ysfull[1,1:nrow])
+df_length = DataFrame(Prior = rand(u2,nrow),
+                 Posterior=path_mhwithinpdmp1.ysfull[2,1:nrow])
+#@df df_y marginalhist(:sigma, :lengthscale,bins=50, fg_color=:black)
+
+#@df df_length histogram(:prior, legend = :none,normed=true, bins=40,
+#                    title= L"Length scale  $\sigma_f")
+#@df df_length histogram(:posterior, legend = :none,normed=true, bins=40,
+#					title= L"Length scale $\sigma_f")
+
 
 #----------------------------------------------------------------
 # MH within BOOMERANG AFFINE BOUND
+ess_vector_boo2 = Vector{Float64}()
+ess_vector_raw_boo2 = Vector{Float64}()
+mh_acc_vector_boo2 = Vector{Float64}()
 
+#for i in 1:20
+f0 = Distributions.rand(prior,1)[:,1]
+v0 = Distributions.rand(prior,1)[:,1]
 gradll(f,theta) = (Y.+1)./2-(exp.(-f).+1).^(-1)#+gradloglik(MvGaussianStandard(zeros(length(f)),Kernelmatrix(theta)),f)+massmatrix*f#inv(massmatrix)*x
 nextev_mhwithinpdmp(f, theta, v) = nextevent_boo_gpc_affine(gradll,f, theta, v)
 sim_mhwithinpdmp2 = Simulation(f0, v0, T, nextev_mhwithinpdmp, gradll,
                   nextbd, lref, algname, MHsampler=true, y0=theta0, ytarget=ytarget,
                   Sigmay = Kernelmatrix, epsilon=epsilon, nmh=nmh,lambdamh=lmh;
-                  mass=massmatrix, maxsegments=10000)
+                  mass=massmatrix, maxsegments=100000)
 (path_mhwithinpdmp2, details_mhwithinpdmp2) = simulate(sim_mhwithinpdmp2)
-#plot(path_mhwithinpdmp3.ys[1,:],path_mhwithinpdmp3.ys[2,:])
+
+plot(path_mhwithinpdmp2.ys[1,:],path_mhwithinpdmp2.ys[2,:])
 boo_part2=Path(path_mhwithinpdmp2.xs, path_mhwithinpdmp2.ts)
 ess2=esspath_boo(boo_part2)#samples3)
-ess_sec2=mean(ess2[1])/details_mhwithinpdmp2["clocktime"]
-#print(ess_sec)
-#print("\n")
-#    push!(ess_vector_raw_boo, ess_sec)
-#    push!(ess_vector_boo,ess_sec/details_mhwithinpdmp3["clocktime"])
-#    push!(mh_acc_vector_boo,details_mhwithinpdmp3["MHaccrejratio"])
+ess_sec2=mean(ess2[1])
+#print(ess_sec2)
+print("\n")
+push!(ess_vector_raw_boo2, ess_sec2)
+push!(ess_vector_boo2,ess_sec2/details_mhwithinpdmp2["clocktime"])
+push!(mh_acc_vector_boo2,details_mhwithinpdmp2["MHaccrejratio"])
 #end
 
 Tp = 0.999 * path_mhwithinpdmp2.ts[end]
@@ -170,26 +215,73 @@ plot(samples2[2,:],samples2[30,:],
     color=:black)
     scatter!(boo_part2.xs[2,:],boo_part2.xs[30,:],legend=false)
 
+using DataFrames
+using StatsPlots: @df, StatsPlots
+
+nrow = Integer(length(path_mhwithinpdmp2.ysfull)/2)
+df_sigma = DataFrame(Prior = rand(u1,nrow),
+                 Posterior=path_mhwithinpdmp2.ysfull[1,1:nrow])
+df_length = DataFrame(Prior = rand(u2,nrow),
+                 Posterior=path_mhwithinpdmp2.ysfull[2,1:nrow])
+
+@df df_length histogram([:Prior :Posterior],
+			line=(1,0.2,:black), normed=true,
+			fillcolor=[:black :blue], fillalpha=0.4,
+			xaxis=(0,20),
+			title="Length-scale")
+            plot!([mean(path_mhwithinpdmp2.ysfull[2,:])],
+            seriestype="vline",
+            label="Posterior mean",
+            color=:black,linewidth = 2)
+            #savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/gpc_length")
+
+@df df_sigma histogram([:Prior :Posterior],
+			line=(1,0.2,:black), normed=true,
+			fillcolor=[:black :blue], fillalpha=0.4,
+			title="Signal Standard Deviation")
+            plot!([mean(path_mhwithinpdmp2.ysfull[1,:])],
+            seriestype="vline",
+            label="Posterior mean",
+            closed=:left,
+            color=:black,linewidth = 2)#vline([1,2,3])
+            #savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/gpc_signal_sd")
+
+plot(path_mhwithinpdmp2.ys_acc_rate[1:length(path_mhwithinpdmp2.ys_acc_rate)-1],
+    ylabel="Acceptance rate",
+    xlabel="MH iteration",
+    legend=false,
+    alpha=0.4,
+    color=:black,linewidth = 1)
+
+
 #----------------------------------------------------------------
 # MH within BOOMERANG NUMERICAL BOUND
 
-gradll(f,theta) = (Y.+1)./2-(exp.(-f).+1).^(-1)#+gradloglik(MvGaussianStandard(zeros(length(f)),Kernelmatrix(theta)),f)+massmatrix*f#inv(massmatrix)*x
-nextev_mhwithinpdmp(f, theta, v) = nextevent_boo_gpc_numeric(gradll,f, theta, v)
-sim_mhwithinpdmp3 = Simulation(f0, v0, T, nextev_mhwithinpdmp, gradll,
-                  nextbd, lref, algname, MHsampler=true, y0=theta0, ytarget=ytarget,
-                  Sigmay = Kernelmatrix, epsilon=epsilon, nmh=nmh,lambdamh=lmh;
-                  mass=massmatrix, maxsegments=10000)
-(path_mhwithinpdmp3, details_mhwithinpdmp3) = simulate(sim_mhwithinpdmp3)
-#plot(path_mhwithinpdmp3.ys[1,:],path_mhwithinpdmp3.ys[2,:])
-boo_part3=Path(path_mhwithinpdmp3.xs, path_mhwithinpdmp3.ts)
-ess3=esspath_boo(boo_part3)#samples3)
-ess_sec3=mean(ess3[1])/details_mhwithinpdmp3["clocktime"]
-#print(ess_sec)
-#print("\n")
-#    push!(ess_vector_raw_boo, ess_sec)
-#    push!(ess_vector_boo,ess_sec/details_mhwithinpdmp3["clocktime"])
-#    push!(mh_acc_vector_boo,details_mhwithinpdmp3["MHaccrejratio"])
-#end
+ess_vector_boo3 = Vector{Float64}()
+ess_vector_raw_boo3 = Vector{Float64}()
+mh_acc_vector_boo3 = Vector{Float64}()
+
+for i in 1:20
+    f0 = Distributions.rand(prior,1)[:,1]
+    v0 = Distributions.rand(prior,1)[:,1]
+
+    gradll(f,theta) = (Y.+1)./2-(exp.(-f).+1).^(-1)#+gradloglik(MvGaussianStandard(zeros(length(f)),Kernelmatrix(theta)),f)+massmatrix*f#inv(massmatrix)*x
+    nextev_mhwithinpdmp(f, theta, v) = nextevent_boo_gpc_numeric(gradll,f, theta, v)
+    sim_mhwithinpdmp3 = Simulation(f0, v0, T, nextev_mhwithinpdmp, gradll,
+                      nextbd, lref, algname, MHsampler=true, y0=theta0, ytarget=ytarget,
+                      Sigmay = Kernelmatrix, epsilon=epsilon, nmh=nmh,lambdamh=lmh;
+                      mass=massmatrix, maxsegments=10000)
+    (path_mhwithinpdmp3, details_mhwithinpdmp3) = simulate(sim_mhwithinpdmp3)
+    #plot(path_mhwithinpdmp3.ys[1,:],path_mhwithinpdmp3.ys[2,:])
+    boo_part3=Path(path_mhwithinpdmp3.xs, path_mhwithinpdmp3.ts)
+    ess3=esspath_boo(boo_part3)#samples3)
+    ess_sec3=mean(ess3[1])
+    #print(ess_sec3)
+    #print("\n")
+    push!(ess_vector_raw_boo3, ess_sec3)
+    push!(ess_vector_boo3,ess_sec3/details_mhwithinpdmp3["clocktime"])
+    push!(mh_acc_vector_boo3,details_mhwithinpdmp3["MHaccrejratio"])   #    push!(mh_acc_vector_boo,details_mhwithinpdmp3["MHaccrejratio"])
+end
 
 Tp = 0.999 * path_mhwithinpdmp3.ts[end]
 gg = range(0, stop=Tp, length=10000)
@@ -218,29 +310,28 @@ algname = "BPS"
 gradll(f,invmatrix) = (Y.+1)./2-(exp.(-f).+1).^(-1)-invmatrix*f#gradloglik(MvGaussianStandard(zeros(length(f)),Kernelmatrix(theta)),f)
 nextev_mhwithinpdmp(f, theta, v, invmatrix) = nextevent_bps_gpc_affine(gradll, f, theta, v, invmatrix)
 
-#ess_vector_bps = Vector{Float64}()
-#ess_vector_raw_bps = Vector{Float64}()
-#mh_acc_vector_bps = Vector{Float64}()
+ess_vector_bps = Vector{Float64}()
+ess_vector_raw_bps = Vector{Float64}()
+mh_acc_vector_bps = Vector{Float64}()
 
-#for i in 1:20
-#f0 = Distributions.rand(prior,1)[:,1]
-#v0 = Distributions.rand(prior,1)[:,1]
-# Define a simulation
-sim_mhwithinpdmp4 = Simulation(f0, v0, T, nextev_mhwithinpdmp, gradll,
-                  nextbd, lref, algname, MHsampler=true, y0=theta0, ytarget=ytarget,
-                  Sigmay = Kernelmatrix, epsilon=epsilon, nmh=nmh,lambdamh=lmh;
-                  mass=massmatrix, maxsegments=10000)
-(path_mhwithinpdmp4, details_mhwithinpdmp4) = simulate(sim_mhwithinpdmp4)
-#plot(path_mhwithinpdmp4.ys[1,:],path_mhwithinpdmp4.ys[2,:])
-boo_part4=Path(path_mhwithinpdmp4.xs, path_mhwithinpdmp4.ts)
-ess4=esspath(boo_part4)#samples3)
-ess_sec4=mean(ess4[1])/details_mhwithinpdmp4["clocktime"]
-print(ess_sec)
-print("\n")
-#    push!(ess_vector_raw_bps, ess_sec)
-#    push!(ess_vector_bps,ess_sec/details_mhwithinpdmp4["clocktime"])
-#    push!(mh_acc_vector_bps,details_mhwithinpdmp4["MHaccrejratio"])
-#end
+for i in 1:20
+    f0 = Distributions.rand(prior,1)[:,1]
+    v0 = Distributions.rand(prior,1)[:,1]
+    # Define a simulation
+    sim_mhwithinpdmp4 = Simulation(f0, v0, T, nextev_mhwithinpdmp, gradll,
+                      nextbd, lref, algname, MHsampler=true, y0=theta0, ytarget=ytarget,
+                      Sigmay = Kernelmatrix, epsilon=epsilon, nmh=nmh,lambdamh=lmh;
+                      mass=massmatrix, maxsegments=10000)
+    (path_mhwithinpdmp4, details_mhwithinpdmp4) = simulate(sim_mhwithinpdmp4)
+    #plot(path_mhwithinpdmp4.ys[1,:],path_mhwithinpdmp4.ys[2,:])
+    boo_part4=Path(path_mhwithinpdmp4.xs, path_mhwithinpdmp4.ts)
+    ess4=esspath(boo_part4)#samples3)
+    ess_sec4=mean(ess4[1])
+    print("\n")
+        push!(ess_vector_raw_bps, ess_sec4)
+        push!(ess_vector_bps,ess_sec4/details_mhwithinpdmp4["clocktime"])
+        push!(mh_acc_vector_bps,details_mhwithinpdmp4["MHaccrejratio"])
+end
 ess_vector_bps
 
 Tp = 0.999 * path_mhwithinpdmp4.ts[end]
@@ -265,11 +356,17 @@ plot(samples4[2,:],samples4[30,:],
 
 using StatsPlots: @df, StatsPlots
 using DataFrames
-df = DataFrame(Algorithm =vcat(repeat(["BOO"];outer=[20]),repeat(["BPS"];outer=[20])),
-                ESS_sec= vcat(log.(ess_vector_boo),log.(ess_vector_bps)))
+df = DataFrame(Algorithm =vcat(repeat(["BOO_0"];outer=[20]),
+                    repeat(["BOO_1"];outer=[20]),
+                    repeat(["BOO_2"];outer=[20]),
+                    repeat(["BOO_3"];outer=[20])),
+                ESS_sec= vcat(ess_vector_bps,
+                ess_vector_boo1,
+                ess_vector_boo2,
+                ess_vector_boo3))
 @df df boxplot(:Algorithm,:ESS_sec, alpha=0.5,legend=false,
-    ylabel = "log ESS/sec")
-    savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/box_gpc_ess_sec")
+    ylabel = "ESS/sec")
+    #savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/box_gpc_ess_sec")
 
 df = DataFrame(Algorithm =vcat(repeat(["BOO"];outer=[20]),repeat(["BPS"];outer=[20])),
                 ESS= vcat(log.(ess_vector_raw_boo),log.(ess_vector_raw_bps)))
