@@ -15,7 +15,7 @@ x=vcat(x0,x1)
 Y=vcat(repeat([-1];outer=[30]),repeat([1];outer=[30]))
 plot(x0,Y[1:30].+1,
     legend=:bottomleft,
-    size=(600,600),
+    #size=(600,600),
     #title="MH-Boomerang Sampler (62-dimensional GPC Affine Bound)",
     ylabel = "p(y = +1 | x)",
     xlabel = "input, x",
@@ -26,7 +26,7 @@ plot(x0,Y[1:30].+1,
     label = "Class -1")
     scatter!(x1,Y[31:60],color=:black,label = "Class +1")
     #savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/scatter_gpc")
-
+Plots.scalefontsizes(1.1)
 p=length(x)
 # Boundaries
 ns, a = Matrix{Float64}(I, p, p), repeat([-Inf];outer=[p])#zeros(p)
@@ -66,8 +66,8 @@ T    = 1000000  # length of path generated
 
 MH = true
 
-lmh　= 0.#0.01
-epsilon=0.5
+lmh　= 0.05
+epsilon=0.75#0.5
 nmh=20
 
 #u2 = TruncatedNormal(maximum(x)-minimum(x),1,0,Inf)
@@ -103,10 +103,10 @@ massmatrix = Kernelmatrix(theta0)
 prior = MvNormal(zeros(p),massmatrix)
 #rand(u1,1)[:,1]
 
-T_vector_boo1 = Vector{Float64}()
-ess_vector_boo1 = Vector{Float64}()
-ess_vector_raw_boo1 = Vector{Float64}()
-mh_acc_vector_boo1 = Vector{Float64}()
+#T_vector_boo1 = Vector{Float64}()
+#ess_vector_boo1 = Vector{Float64}()
+#ess_vector_raw_boo1 = Vector{Float64}()
+#mh_acc_vector_boo1 = Vector{Float64}()
 
 f0 = Distributions.rand(prior,1)[:,1]
 #for i in 1:20
@@ -117,11 +117,20 @@ nextev_mhwithinpdmp(f, theta, v) = nextevent_boo_gpc_cte(gradll,f, theta, v)
 sim_mhwithinpdmp1 = Simulation(f0, v0, T, nextev_mhwithinpdmp, gradll,
               nextbd, lref, algname, MHsampler=true, y0=theta0, ytarget=ytarget,
               Sigmay = Kernelmatrix, epsilon=epsilon, nmh=nmh,lambdamh=lmh;
-              mass=massmatrix, maxsegments=10000)
+              mass=massmatrix, maxsegments=5000000)
 (path_mhwithinpdmp1, details_mhwithinpdmp1) = simulate(sim_mhwithinpdmp1)
-#plot(path_mhwithinpdmp1.ys[1,:],path_mhwithinpdmp1.ys[2,:])
+plot(path_mhwithinpdmp1.ysfull[1,:],path_mhwithinpdmp1.ysfull[2,:])
 #xlabel = "signal variance",
 #ylabel = "length-scale")
+sigmamean=mean(path_mhwithinpdmp1.ysfull[1,:])
+sigmasd=var(path_mhwithinpdmp1.ysfull[1,:])^0.5
+lengthmean=mean(path_mhwithinpdmp1.ysfull[2,:])
+lengthsd=var(path_mhwithinpdmp1.ysfull[2,:])^0.5
+
+theta_distsigma = Normal(sigmamean,2*sigmasd)
+theta_distlength = Normal(lengthmean,2*lengthsd)
+#Normal()
+
 boo_part1=Path(path_mhwithinpdmp1.xs, path_mhwithinpdmp1.ts)
 ess1=esspath_boo(boo_part1)#samples3)
 ess1=mean(ess1[1])
@@ -141,17 +150,17 @@ fbarboo = mean(samples1,dims=2)
 scatter(vcat(x0,x1),fbarboo)
 scatter(vcat(x0,x1),(exp.(-fbarboo).+1).^(-1))
 
-plot(samples1[2,:],samples1[30,:],
+plot(samples1[15,:],samples1[35,:],
     legend=false,
     size=(600,600),
     title="MH-Boomerang Sampler (62-dimensional GPC Affine Bound)",
     xlabel = "X_1(t)",
     ylabel = "X_2(t)",
-    ylims = (-20,20),
-    xlims = (-20,20),
+#    ylims = (-20,20),
+#    xlims = (-20,20),
     #fmt = :png,
     color=:black)
-    scatter!(boo_part1.xs[2,:],boo_part1.xs[30,:],legend=false)
+    scatter!(boo_part1.xs[15,:],boo_part1.xs[35,:],legend=false)
 
 using StatsPlots: @df, StatsPlots, marginalhist
 using DataFrames
@@ -177,20 +186,32 @@ ess_vector_boo2min = Vector{Float64}()
 ess_vector_raw_boo2 = Vector{Float64}()
 mh_acc_vector_boo2 = Vector{Float64}()
 
-for i in 1:10
-    f0 = Distributions.rand(prior,1)[:,1]
-    v0 = Distributions.rand(prior,1)[:,1]
-    gradll(f,theta) = (Y.+1)./2-(exp.(-f).+1).^(-1)#+gradloglik(MvGaussianStandard(zeros(length(f)),Kernelmatrix(theta)),f)+massmatrix*f#inv(massmatrix)*x
-    nextev_mhwithinpdmp(f, theta, v) = nextevent_boo_gpc_affine(gradll,f, theta, v)
-    sim_mhwithinpdmp2 = Simulation(f0, v0, T, nextev_mhwithinpdmp, gradll,
-                  nextbd, lref, algname, MHsampler=true, y0=theta0, ytarget=ytarget,
-                  Sigmay = Kernelmatrix, epsilon=epsilon, nmh=nmh,lambdamh=lmh;
-                  mass=massmatrix, maxsegments= 10000)
-    (path_mhwithinpdmp2, details_mhwithinpdmp2) = simulate(sim_mhwithinpdmp2)
+#for i in 1:10
+f0 = Distributions.rand(prior,1)[:,1]
+v0 = Distributions.rand(prior,1)[:,1]
+gradll(f,theta) = (Y.+1)./2-(exp.(-f).+1).^(-1)#+gradloglik(MvGaussianStandard(zeros(length(f)),Kernelmatrix(theta)),f)+massmatrix*f#inv(massmatrix)*x
 
-    #plot(path_mhwithinpdmp2.ys[1,:],path_mhwithinpdmp2.ys[2,:])
-    boo_part2=Path(path_mhwithinpdmp2.xs, path_mhwithinpdmp2.ts)
-    aux = Matrix(Transpose(samplepath(boo_part2, range(0, stop=0.999 * path_mhwithinpdmp2.ts[end], length=10000))))
+T = 20000
+epsilon=0.6#5
+nmh=10
+lmh=0.005
+
+T = 20000
+epsilon=0.1#5
+nmh=20
+lmh=0.005
+
+
+nextev_mhwithinpdmp(f, theta, v) = nextevent_boo_gpc_affine(gradll,f, theta, v)
+sim_mhwithinpdmp2 = Simulation(f0, v0, T, nextev_mhwithinpdmp, gradll,
+              nextbd, lref, algname, MHsampler=true, y0=theta0, ytarget=ytarget,
+              Sigmay = Kernelmatrix, epsilon=epsilon, nmh=nmh,lambdamh=lmh;
+              mass=massmatrix, maxsegments= 5000000)
+(path_mhwithinpdmp2, details_mhwithinpdmp2) = simulate(sim_mhwithinpdmp2)
+
+plot(path_mhwithinpdmp2.ys[1,:],path_mhwithinpdmp2.ys[2,:])
+boo_part2=Path(path_mhwithinpdmp2.xs, path_mhwithinpdmp2.ts)
+aux = Matrix(Transpose(samplepath(boo_part2, range(0, stop=0.999 * path_mhwithinpdmp2.ts[end], length=10000))))
     @rput aux
     R"eff2 = effectiveSize(aux)"
     @rget eff2
@@ -239,38 +260,40 @@ df_sigma = DataFrame(Prior = rand(u1,nrow-1),
                  Posterior=path_mhwithinpdmp2.ysfull[1,1:nrow-1])
 df_length = DataFrame(Prior = aux[idx][1:nrow-1],
                  Posterior=path_mhwithinpdmp2.ysfull[2,1:nrow-1])
-df_sigma = DataFrame(Prior = rand(u1,nrow-1),
+#df_sigma = DataFrame(Prior = rand(u1,nrow-1),
                 Posterior=path_mhwithinpdmp2.ysfull[1,1:nrow-1])
 
 @df df_length histogram([:Prior :Posterior],
 			line=(1,0.2,:black), normed=true,
-			fillcolor=[:black :blue], fillalpha=0.4,
+			fillcolor=[:black :lightsalmon2], fillalpha=0.6, #lightblue #details_mhwithinpdmp1
 			xaxis=(0,20),
-			title="Length-scale")
+			xlabel="Length-scale")
             plot!([mean(path_mhwithinpdmp2.ysfull[2,:])],
             seriestype="vline",
             label="Posterior mean",
             color=:black,linewidth = 2)
-#            savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/gpc_length")
+            savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/gpc_length2")
 
 @df df_sigma histogram([:Prior :Posterior],
 			line=(1,0.2,:black), normed=true,
-			fillcolor=[:black :blue], fillalpha=0.4,
-			title="Signal Standard Deviation")
+			fillcolor=[:black :lightsalmon2], fillalpha=0.6,
+            #bins=15,
+			xlabel="Signal Standard Deviation")
             plot!([mean(path_mhwithinpdmp2.ysfull[1,:])],
             seriestype="vline",
             label="Posterior mean",
             color=:black,linewidth = 2)#vline([1,2,3])
-#            savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/gpc_signal_sd")
+            savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/gpc_signal_sd2")
 
 plot(path_mhwithinpdmp2.ys_acc_rate[1:length(path_mhwithinpdmp2.ys_acc_rate)-1].*100,
     ylabel="Acceptance ratio %",
     xlabel="MH iteration",
-    ylims = (0,100),
+    ylims = (0,60),
     legend=false,
     alpha=0.4,
+    lw = 2,
     color=:black,linewidth = 1)
-#    savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/gpc_acc_ratio")
+    #savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/gpc_acc_ratio2")
 
 
 #----------------------------------------------------------------
@@ -341,6 +364,40 @@ plot(samples3[2,:],samples3[30,:],
 
 #----------------------------------------------------------------
 
+algname = "ZZ"
+#gradll(f,theta) = (Y.+1)./2-(exp.(-f).+1).^(-1)+gradloglik(MvGaussianStandard(zeros(length(f)),Kernelmatrix(theta)),f)
+gradll(f,invmatrix) = (Y.+1)./2-(exp.(-f).+1).^(-1)-invmatrix*f#gradloglik(MvGaussianStandard(zeros(length(f)),Kernelmatrix(theta)),f)
+nextev_mhwithinpdmp(f, theta, v, invmatrix) = nextevent_zz_gpc_affine(gradll, f, theta, v, invmatrix)
+
+f0 = Distributions.rand(prior,1)[:,1]
+v0   = rand([-1,1], p)
+    # Define a simulation
+sim_mhwithinpdmp4 = Simulation(f0, v0, T, nextev_mhwithinpdmp, gradll,
+          nextbd, lref, algname, MHsampler=true, y0=theta0, ytarget=ytarget,
+          Sigmay = Kernelmatrix, epsilon=epsilon, nmh=nmh,lambdamh=lmh;
+          mass=massmatrix, maxsegments=5000)
+(path_mhwithinpdmp4, details_mhwithinpdmp4) = simulate(sim_mhwithinpdmp4)
+boo_part4=Path(path_mhwithinpdmp4.xs, path_mhwithinpdmp4.ts)
+Tp = 0.999 * path_mhwithinpdmp4.ts[end]
+gg = range(0, stop=Tp, length=10000)
+samples4=samplepath(boo_part4,gg)#[0.0:0.1:round(path_mhwithinpdmp3.ts[end]-1,digits=0);])
+fbarboo = mean(samples4,dims=2)
+scatter(vcat(x0,x1),fbarboo)
+scatter(vcat(x0,x1),(exp.(-fbarboo).+1).^(-1))
+
+plot(samples4[4,:],samples4[35,:],
+    legend=false,
+    size=(600,600),
+    title="MH-ZZ Sampler (62-dimensional GPC Affine Bound)",
+    xlabel = "X_1(t)",
+    ylabel = "X_2(t)",
+    ylims = (-10,10),
+    xlims = (-10,10),
+    #fmt = :png,
+    color=:black)
+    scatter!(boo_part4.xs[4,:],boo_part4.xs[35,:],legend=false)
+
+
 # MH within BPS ------------------------------------------------
 algname = "BPS"
 #gradll(f,theta) = (Y.+1)./2-(exp.(-f).+1).^(-1)+gradloglik(MvGaussianStandard(zeros(length(f)),Kernelmatrix(theta)),f)
@@ -387,17 +444,17 @@ fbarbps = mean(samples4,dims=2)
 scatter(vcat(x0,x1),fbarbps)
 scatter(vcat(x0,x1),(exp.(-fbarbps).+1).^(-1))
 
-plot(samples4[2,:],samples4[30,:],
+plot(samples4[1,:],samples4[31,:],
     legend=false,
     size=(600,600),
     title="MH-Boomerang Sampler (62-dimensional GPC Affine Bound)",
     xlabel = "X_1(t)",
     ylabel = "X_2(t)",
-    ylims = (-20,20),
-    xlims = (-20,20),
+    ylims = (-10,10),
+    xlims = (-10,10),
     #fmt = :png,
     color=:black)
-    scatter!(boo_part4.xs[2,:],boo_part4.xs[30,:],legend=false)
+    scatter!(boo_part4.xs[1,:],boo_part4.xs[31,:],legend=false)
 
 
 using StatsPlots: @df, StatsPlots

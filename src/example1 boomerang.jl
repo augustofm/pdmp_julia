@@ -54,9 +54,11 @@ v0  /= norm(v0) # put it on the sphere (not necessary)
 # Define a simulation
 algname = "BPS"
 sim_bps = Simulation( x0, v0, T, nextev_bps, gradll,
-                  nextbd, lref,  mass=massmatrix; maxsegments = 139)
+                  nextbd, lref,  mass=massmatrix; maxsegments = 100)
 (path_bps, details_bps) = simulate(sim_bps)
 
+#using LaTeXStrings
+#Plots.scalefontsizes(0.8)
 plot(path_bps.xs[1,:],path_bps.xs[2,:],
     legend=false,
     size=(600,600),
@@ -69,9 +71,9 @@ plot(path_bps.xs[1,:],path_bps.xs[2,:],
     scatter!(path_bps.xs[1,:],path_bps.xs[2,:],legend=false)
     annotate!(4, -3, text(string("nsegments: ", details_bps["nsegments"],"\n",
     "nbounce: ", details_bps["nbounce"],"\n",
-    "nrefresh: ", details_bps["nrefresh"]), :black, :right, 10))
+    "nrefresh: ", details_bps["nrefresh"]), :black, :right, 16))
     #annotate!(3, 4, text(string("path mean: ", round.(pathmean(path_bps),digits=3)), :black, :right,10))
-savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure2_bps")
+savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure2_bps2")
 #cor(path_bps.xs[2,:], path_bps.xs[1,:])
 details_bps
 
@@ -85,12 +87,12 @@ T    = 900.0   # length of path generated
 lref = 0.05#1.0     # rate of refreshment
 #x0   = mu+L1.L*randn(p) # sensible starting point
 #x0 = [0.1,0.1]#,0.1,0.1,0.1]
-#v0   = rand([-1,1], p) # starting velocity
+v0   = rand([-1,1], p) # starting velocity
 #v0  /= norm(v0) # put it on the sphere (not necessary)
 algname = "ZZ"
 # Define a simulation
 sim_zz = Simulation( x0, v0, T, nextev_zz, gradll,
-                  nextbd, lref, algname; maxgradeval = 500000, maxsegments=139)
+                  nextbd, lref, algname; maxgradeval = 500000, maxsegments=100)
 (path_zz, details_zz) = simulate(sim_zz)
 
 plot(path_zz.xs[1,:],path_zz.xs[2,:],
@@ -105,10 +107,10 @@ plot(path_zz.xs[1,:],path_zz.xs[2,:],
     scatter!(path_zz.xs[1,:],path_zz.xs[2,:],legend=false)
     annotate!(4, -3, text(string("nsegments: ", details_zz["nsegments"],"\n",
     "nbounce: ", details_zz["nbounce"],"\n",
-    "nrefresh: ", details_zz["nrefresh"]), :black, :right, 10))
+    "nrefresh: ", details_zz["nrefresh"]), :black, :right, 16))
     #annotate!(3, 4, text(string("path mean: ", round.(pathmean(path_zz),digits=3)), :black, :right,10))
 #cor(path_bps.xs[2,:], path_bps.xs[1,:])
-savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure2_zz")
+savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure2_zz2")
 #pathmean(path_zz)
 details_zz
 
@@ -121,7 +123,7 @@ massmatrix = Matrix{Float64}(I, p, p)
 gradll(x) = gradloglik(mvg,x)+x#(inv(massmatrix))*x
 nextev_boo(x, v) = nextevent_boo(gradll, mvg, x, v)
 T    = 90000  # length of path generated
-lref = 0.04#0.5#0.15#0.1    # rate of refreshment
+lref = 0.03#0.5#0.15#0.1    # rate of refreshment
 #x0   = mu+L1.L*randn(p) # sensible starting point
 x0 = [2.,2.]
 v0   = rand(MvNormal(zeros(p),massmatrix),1)[:,1] # starting velocity
@@ -130,7 +132,7 @@ algname = "BOOMERANG"
 
 # Define a simulation
 sim_boo = Simulation(x0, v0, T, nextev_boo, gradll,
-                  nextbd, lref, algname,mass=massmatrix; maxgradeval = 1000000, maxsegments=129)
+                  nextbd, lref, algname,mass=massmatrix; maxgradeval = 1000000, maxsegments=100)
 (path_boo, details_boo) = simulate(sim_boo)
 
 samples = samplepath_boo(path_boo,[0.0:0.1:round(path_boo.ts[end]-1,digits=0);])
@@ -148,9 +150,9 @@ plot(samples[1,:],samples[2,:],
     scatter!(path_boo.xs[1,:],path_boo.xs[2,:],legend=false)
     annotate!(4, -3, text(string("nsegments: ", details_boo["nsegments"],"\n",
     "nbounce: ", details_boo["nbounce"],"\n",
-    "nrefresh: ", details_boo["nrefresh"]), :black, :right, 10))
+    "nrefresh: ", details_boo["nrefresh"]), :black, :right, 16))
     #annotate!(2, 4, text(string("path mean: ", round.(pathmean_boo(path_boo),digits=3)), :black, :right,10))
-savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure2_boo")
+savefig("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/plots/figure2_boo2")
 
 
 # Building a Boomerang Simulation with NO bounces, but with  refreshment

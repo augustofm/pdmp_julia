@@ -6,7 +6,8 @@ export
     pathmean,
     pathmean_boo,
     pathvar_boo,
-    esspath
+    esspath,
+    esspath_boo
 
 """
     AllowedTimeType
@@ -35,13 +36,15 @@ end
 mutable struct Path_MH
     xs::Matrix{Real}  # corners/trajectories (dim: nfeatures * nsteps)
     ys::Matrix{Real}  # corners/trajectories (dim: nfeatures * nsteps)
+    ysfull::Matrix{Real}  # corners/trajectories (dim: nfeatures * nsteps)
+    ys_acc_rate::Vector{Real}
     ts::Vector{Real}  # times (dim: nsteps)
     #is_jump::BitArray # if corner or halmitonian trajectory
     # -- implicit
     d1::Int      # nfeatures Boomerang
     d2::Int     # nfeatures Metropolis-Hastings
     nseg::Int   # number of segments
-    Path_MH(xs, ys, ts) = new(xs, ys, ts, size(xs, 1), size(ys, 1), length(ts) - 1)
+    Path_MH(xs, ys, ysfull, ys_acc_rate, ts) = new(xs, ys, ysfull, ys_acc_rate, ts, size(xs, 1), size(ys, 1), length(ts) - 1)
 end
 
 """
@@ -181,7 +184,7 @@ function samplepath_boo(p::Path, t::AllowedTimeType)
 #    end
     samples
 end
-samplepath_boo(p::Path, t::Real) = samplepath(p, [t])[:, 1]
+samplepath_boo(p::Path, t::Real) = samplepath_boo(p, [t])[:, 1]
 
 
 """
@@ -296,7 +299,7 @@ Increase the number of sample points on the path. The hope is that the ESS for
 each dimension divided by the number of samples becomes larger than `limfrac`.
 """
 function esspath(path::Path; ns::Int=1000, rtol::Real=0.1,
-                 limfrac::Real=0.2, maxns::Int=100000)
+                 limfrac::Real=3.2, maxns::Int=100000)
 
     Tp = 0.999 * path.ts[end]
     gg = range(0, stop=Tp, length=ns)
@@ -320,6 +323,41 @@ function esspath(path::Path; ns::Int=1000, rtol::Real=0.1,
     end
     (cur_ess, ns)
 end
+
+
+
+"""
+    esspath_boo(path, ns, rtol, limitfrac)
+
+Increase the number of sample points on the path. The hope is that the ESS for
+each dimension divided by the number of samples becomes larger than `limfrac`.
+"""
+function esspath_boo(path::Path; ns::Int=1000, rtol::Real=0.1,
+                 limfrac::Real=3.2, maxns::Int=100000)
+
+    Tp = 0.999 * path.ts[end]
+    gg = range(0, stop=Tp, length=ns)
+
+    spath  = samplepath_boo(path, gg)
+    old_ess = [ess(spath[i, :]) for i in 1:path.p]
+    flag = any(old_ess ./ ns .< limfrac)
+    cur_ess = flag ? similar(old_ess) : old_ess
+
+    while flag && (ns < maxns / 2)
+        ns *= 2
+        gg = range(0, stop=Tp, length=ns)
+        spath = samplepath_boo(path, gg)
+        cur_ess = [ess(spath[i, :]) for i in 1:path.p]
+
+        # cond1 : check whether the ESS/NS is big enough
+        # cond2 : check whether the ESS changed significantly
+        flag   = any(cur_ess ./ ns .< limfrac) ||
+                 any((abs.(cur_ess - old_ess) ./ old_ess) .> rtol)
+        old_ess = cur_ess
+    end
+    (cur_ess, ns)
+end
+
 
 """
     ess(v)
