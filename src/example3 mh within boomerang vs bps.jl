@@ -1,6 +1,6 @@
 using PDSampler
 using LinearAlgebra         #For Cholesky
-import Random               #For generating random vectors               #For plotting
+using Random               #For generating random vectors               #For plotting
 using Plots
 using DelimitedFiles
 using Distributions
@@ -112,12 +112,13 @@ f0 = Distributions.rand(prior,1)[:,1]
 #for i in 1:20
 v0 = Distributions.rand(prior,1)[:,1]
 # Define a simulation
+T=100
 gradll(f,theta) = (Y.+1)./2-(exp.(-f).+1).^(-1)#+gradloglik(MvGaussianStandard(zeros(length(f)),Kernelmatrix(theta)),f)+massmatrix*f#inv(massmatrix)*x
 nextev_mhwithinpdmp(f, theta, v) = nextevent_boo_gpc_cte(gradll,f, theta, v)
 sim_mhwithinpdmp1 = Simulation(f0, v0, T, nextev_mhwithinpdmp, gradll,
               nextbd, lref, algname, MHsampler=true, y0=theta0, ytarget=ytarget,
               Sigmay = Kernelmatrix, epsilon=epsilon, nmh=nmh,lambdamh=lmh;
-              mass=massmatrix, maxsegments=5000000)
+              mass=massmatrix, maxsegments=500)
 (path_mhwithinpdmp1, details_mhwithinpdmp1) = simulate(sim_mhwithinpdmp1)
 plot(path_mhwithinpdmp1.ysfull[1,:],path_mhwithinpdmp1.ysfull[2,:])
 #xlabel = "signal variance",
