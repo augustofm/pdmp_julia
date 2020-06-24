@@ -256,24 +256,9 @@ Pkg.add("DifferentialEquations")
 Pkg.clone("https://github.com/JuliaMatrices/BandedMatrices.jl.git")
 using BandedMatrices
 
-# Running OKAY
-using DiffEqBase
-using PDSampler
-using Distributions,LinearAlgebra,Random
-
-# Not Running OKAY
-
-using DiffEqSensitivity
 using DifferentialEquations
+using DiffEqSensitivity
 using Zygote
-
-Pkg.rm("DiffEqBase"; mode = PKGMODE_MANIFEST)
-Pkg.rm("Zygote"; mode = PKGMODE_MANIFEST)
-Pkg.rm("DifferentialEquations"; mode = PKGMODE_MANIFEST)
-Pkg.rm("DifferentialEqSensitivity"; mode = PKGMODE_MANIFEST)
-Pkg.rm("ForwardDiff"; mode = PKGMODE_MANIFEST)
-
-
 
 function lotka_volterra(du,u,p,t)
   x, y = u
@@ -326,42 +311,32 @@ df_dz = (log.(y)-log.(z)).*z.^(-1)
 reshape(dz_dp, (4,1))
 dz_dp=convert(Array,VectorOfArray(dz_dp))'
 
-#-------------
-
 # AGORA VAI
-
+using CSV
+#using Pkg
+Pkg.add("DiffEqBase")
+#using Compat
 using DifferentialEquations
 using DiffEqSensitivity
 using DiffResults
+using Plots
 using Zygote
 using DiffEqObjective
 
-using ForwardDiff, Calculus, Distributions, LinearAlgebra, DiffEqSensitivity
-add DiffEqBase, LinearAlgebra
-#using Pkg
-#Pkg.add("DiffEqBase")
-#using Compat
-#using DifferentialEquations
-#using DiffEqSensitivity
-#using DiffResults
-#using Plots
-#using Zygote
-#using DiffEqObjective
-
-Pkg.add("CSV")
 using CSV
 using ForwardDiff, DiffEqBase, ForwardDiff, Calculus, Distributions, LinearAlgebra, DiffEqSensitivity
+using DifferentialEquations, DiffResults
+
+DiffEqBase, ForwardDiff, Calculus, Distributions, LinearAlgebra, DiffEqSensitivity
+
+Pkg.update("DiffEqSensitivity")
+Pkg.status("DiffEqSensitivity")
+
+Pkg.rm("DiffEqSensitivity"; mode = PKGMODE_MANIFEST)
+Pkg.add("DiffEqSensitivity")
+
+
 df = CSV.read("/Users/gusfmagalhaes/Documents/dev/PDSampler.jl/examples/lotka-volterra2.csv")
-
-#using DifferentialEquations, DiffResults
-
-#DiffEqBase, ForwardDiff, Calculus, Distributions, LinearAlgebra, DiffEqSensitivity
-
-#Pkg.update("DiffEqSensitivity")
-#Pkg.status("DiffEqSensitivity")
-
-#Pkg.rm("DiffEqSensitivity"; mode = PKGMODE_MANIFEST)
-#Pkg.add("DiffEqSensitivity")
 
 tsvec = Array(df[:year])
 hare = df[:,3]
@@ -423,10 +398,10 @@ function gradll2(param::Vector{<:Real})
     return -cums
 end
 
-
+x = copy(p)
 prior = MvNormal([1,.05,1,.05],0.05*Matrix(I,4,4))
 v = Distributions.rand(prior,1)[:,1]
-#v=[1,.05,1,.05]
+v=[1,.05,1,.05]
 
 function lambda!(lambdavec::AbstractVector{T}, i::Int, t::T,
     x::Vector{<:Real},v::Vector{<:Real}) where T
@@ -437,7 +412,6 @@ end;
 lambdavec = zeros(16)#Vector{Float64}(undef, 8)
 tvec = range(0.0, stop=2*pi, length=16)
 x=copy(p)
-
 for i = 1:16
 #    println(lambdavec[i])
     lambda!(lambdavec, i, tvec[i],x,v)#lambdavec[i]=max(0,dot(-gll(cos(t).*x+sin(t).*v,y),-sin(t).*x+cos(t).*v))#/txinc!(ret, i)
